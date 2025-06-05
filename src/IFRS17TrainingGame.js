@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from 'lucide-react';
-import { modules } from './IFRS17Modules';
+import { modules } from './data/IFRS17Modules';
+import { achievementsList, getNewAchievements, createAchievementStats } from './modules/achievements';
+import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
+import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
 
 
 const IFRS17TrainingGame = () => {
@@ -16,26 +19,15 @@ const IFRS17TrainingGame = () => {
   const [isCorrect, setIsCorrect] = useState(false);
   const [achievements, setAchievements] = useState([]);
   const [combo, setCombo] = useState(0);
-  const [powerUps, setPowerUps] = useState({ hint: 3, eliminate: 2, skip: 1 });
+  const [powerUps, setPowerUps] = useState(INITIAL_POWER_UPS);
   const [completedModules, setCompletedModules] = useState([]);
   const [answeredQuestions, setAnsweredQuestions] = useState({});
   const [showModuleComplete, setShowModuleComplete] = useState(false);
   const [moduleScore, setModuleScore] = useState(0);
   const [perfectModule, setPerfectModule] = useState(true);
+  const [perfectModulesCount, setPerfectModulesCount] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showAchievement, setShowAchievement] = useState(null);
-
-
-  const achievementsList = [
-    { id: 1, name: "First Steps", icon: "🎯", condition: (stats) => stats.score >= 10 },
-    { id: 2, name: "Quick Learner", icon: "⚡", condition: (stats) => stats.streak >= 3 },
-    { id: 3, name: "Module Master", icon: "🏆", condition: (stats) => stats.modulesCompleted >= 1 },
-    { id: 4, name: "IFRS Expert", icon: "🎓", condition: (stats) => stats.level >= 5 },
-    { id: 5, name: "Perfect Score", icon: "💯", condition: (stats) => stats.perfectModules >= 1 },
-    { id: 6, name: "Combo King", icon: "🔥", condition: (stats) => stats.maxCombo >= 5 },
-    { id: 7, name: "Knowledge Seeker", icon: "📚", condition: (stats) => stats.modulesCompleted >= 5 },
-    { id: 8, name: "Unstoppable", icon: "💪", condition: (stats) => stats.streak >= 10 },
-  ]; 
 
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
@@ -71,7 +63,7 @@ const IFRS17TrainingGame = () => {
         setLevel(level + 1);
         setXp((xp + 25) % (level * 100));
         setShowLevelUp(true);
-        setTimeout(() => setShowLevelUp(false), 3500);
+        setTimeout(() => setShowLevelUp(false), 2500);
       }
     } else {
       setStreak(0);
@@ -79,31 +71,40 @@ const IFRS17TrainingGame = () => {
       setPerfectModule(false);
     }
 
+
     setTimeout(() => {
       if (currentQuestion < modules[currentModule].questions.length - 1) {
         setCurrentQuestion(currentQuestion + 1);
         setShowFeedback(false);
         setSelectedAnswer(null);
       } else {
+        if (perfectModule) {
+          setPerfectModulesCount(prev => prev + 1);
+        }        
         setShowModuleComplete(true);
         setCompletedModules([...completedModules, currentModule]);
+        saveProgress();
         
         if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
           setUnlockedModules([...unlockedModules, currentModule + 1]);
         }
       }
-    }, 3500);
+    }, 2500);
   };
 
   const handlePowerUp = (type) => {
-    if (powerUps[type] <= 0) return;
+    if (!canUsePowerUp(powerUps, type)) return;
     
-    setPowerUps({ ...powerUps, [type]: powerUps[type] - 1 });
+    setPowerUps(consumePowerUp(powerUps, type));
     
     switch(type) {
       case 'hint':
+        // TODO: Implement hint display logic
+        console.log('Hint: Look for the most comprehensive answer that aligns with IFRS 17 principles');
         break;
       case 'eliminate':
+        // TODO: Implement eliminate logic to disable 2 wrong answers
+        console.log('Eliminate: Two incorrect answers have been removed');
         break;
       case 'skip':
         if (currentQuestion < modules[currentModule].questions.length - 1) {
@@ -112,6 +113,7 @@ const IFRS17TrainingGame = () => {
             ...answeredQuestions, 
             [questionKey]: { answered: true, selectedAnswer: null, wasCorrect: false } 
           });
+          setPerfectModule(false); // Skipping means not perfect
           setCurrentQuestion(currentQuestion + 1);
         }
         break;
@@ -121,30 +123,116 @@ const IFRS17TrainingGame = () => {
   };
 
   const checkAchievementConditions = () => {
-    for (const achDef of achievementsList) {
-      if (!achievements.find(a => a.id === achDef.id)) {
-        const stats = {
-          score,
-          streak,
-          level,
-          modulesCompleted: completedModules.length,
-          perfectModules: 0,
-          maxCombo: combo
-        };
-        
-        if (achDef.condition(stats)) {
-          setAchievements(prev => [...prev, achDef]);
-          setShowAchievement(achDef);
-          setTimeout(() => setShowAchievement(null), 3500);
-          break;
-        }
-      }
+    const stats = createAchievementStats({
+      score,
+      streak,
+      level,
+      completedModules,
+      perfectModulesCount,
+      combo
+    });
+    
+    const newAchievements = getNewAchievements(achievements, stats);
+    
+    if (newAchievements.length > 0) {
+      const firstNewAchievement = newAchievements[0];
+      setAchievements(prev => [...prev, firstNewAchievement]);
+      setShowAchievement(firstNewAchievement);
+      setTimeout(() => setShowAchievement(null), 2500);
     }
   };
-
+  const startNewModule = (moduleIndex) => {
+    setCurrentModule(moduleIndex);
+    setCurrentQuestion(0);
+    setModuleScore(0);
+    setPerfectModule(true);
+    // Refresh some power-ups
+    setPowerUps(prev => refreshPowerUps(prev));
+  };
   useEffect(() => {
     checkAchievementConditions();
   }, [score, streak, level, combo, completedModules]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (answeredQuestions && Object.keys(answeredQuestions).length > 0) {
+      saveProgress();
+    }
+  }, [answeredQuestions]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const saveProgress = () => {
+    const success = saveGameState({
+      currentModule,
+      currentQuestion,
+      score,
+      level,
+      xp,
+      completedModules,
+      answeredQuestions,
+      achievements,
+      powerUps,
+      streak,
+      combo,
+      perfectModulesCount
+    });
+    
+    if (!success) {
+      console.error('Failed to save progress');
+    }
+  };
+
+  const resetProgress = () => {
+    if (window.confirm('⚠️ Are you sure you want to reset all progress?\n\nThis will delete:\n• Your score and level\n• All completed modules\n• All achievements\n• All answered questions\n\nThis action cannot be undone!')) {
+      clearGameState();
+      // Reset all state to initial values
+      setCurrentModule(0);
+      setCurrentQuestion(0);
+      setScore(0);
+      setStreak(0);
+      setLevel(1);
+      setXp(0);
+      setUnlockedModules([0]);
+      setShowFeedback(false);
+      setSelectedAnswer(null);
+      setIsCorrect(false);
+      setAchievements([]);
+      setCombo(0);
+      setPowerUps(INITIAL_POWER_UPS);
+      setCompletedModules([]);
+      setAnsweredQuestions({});
+      setShowModuleComplete(false);
+      setModuleScore(0);
+      setPerfectModule(true);
+      setPerfectModulesCount(0);
+      setShowLevelUp(false);
+      setShowAchievement(null);
+    }
+  };
+
+  // Load progress on mount
+  useEffect(() => {
+    const savedState = loadGameState();
+    if (savedState) {
+      setCurrentModule(savedState.currentModule || 0);
+      setCurrentQuestion(savedState.currentQuestion || 0);
+      setScore(savedState.score || 0);
+      setLevel(savedState.level || 1);
+      setXp(savedState.xp || 0);
+      setCompletedModules(savedState.completedModules || []);
+      setAnsweredQuestions(savedState.answeredQuestions || {});
+      setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+      setStreak(savedState.streak || 0);
+      setCombo(savedState.combo || 0);
+      setPerfectModulesCount(savedState.perfectModulesCount || 0);
+      
+      // Restore achievements by ID
+      const restoredAchievements = achievementsList.filter(a => 
+        savedState.achievements?.includes(a.id)
+      );
+      setAchievements(restoredAchievements);
+    }
+  }, []);
+
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-4">
@@ -212,12 +300,7 @@ const IFRS17TrainingGame = () => {
                 key={index}
                 onClick={() => {
                   if (unlockedModules.includes(index) && !completedModules.includes(index) && index !== currentModule) {
-                    setCurrentModule(index);
-                    setCurrentQuestion(0);
-                    setModuleScore(0);
-                    setPerfectModule(true);
-                    setShowFeedback(false);
-                    setSelectedAnswer(null);
+                    startNewModule(index);
                   }
                 }}
                 disabled={!unlockedModules.includes(index) || completedModules.includes(index) || (index === currentModule && !showModuleComplete)}
@@ -289,12 +372,7 @@ const IFRS17TrainingGame = () => {
               {currentModule < modules.length - 1 ? (
                 <button
                   onClick={() => {
-                    setCurrentModule(currentModule + 1);
-                    setCurrentQuestion(0);
-                    setModuleScore(0);
-                    setPerfectModule(true);
-                    setShowFeedback(false);
-                    setSelectedAnswer(null);
+                    startNewModule(currentModule + 1);
                     setShowModuleComplete(false);
                   }}
                   className="mt-4 px-6 py-3 bg-white text-purple-600 rounded-full font-bold hover:bg-gray-100 transition-all transform hover:scale-105"
@@ -334,9 +412,7 @@ const IFRS17TrainingGame = () => {
                           : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                       }`}
                     >
-                      {type === 'hint' && '💡'} 
-                      {type === 'eliminate' && '🎯'} 
-                      {type === 'skip' && '⏭️'} 
+                      {getPowerUpInfo(type)?.icon}
                       {count}
                     </button>
                   ))}
@@ -372,7 +448,7 @@ const IFRS17TrainingGame = () => {
               {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && !showFeedback && (
                 <div className="bg-yellow-500/20 border border-yellow-400 rounded-lg p-3 mb-4">
                   <p className="text-yellow-300 text-center">
-                    ⚠️ You've already answered this question
+                    ⚠️ You've already answered this question, Use the Next button to progress to the next question.
                   </p>
                 </div>
               )}
@@ -461,6 +537,42 @@ const IFRS17TrainingGame = () => {
             </div>
           </div>
         )}
+        <div className="mt-6 text-center">
+          <button
+            onClick={resetProgress}
+            className="bg-gray-800/50 hover:bg-red-600/30 border border-gray-600 hover:border-red-500 text-gray-400 hover:text-red-400 px-6 py-2 rounded-lg transition-all duration-300 text-sm"
+          >
+            ⚠️ Reset All Progress
+          </button>
+        </div>
+        {/* Professional Footer Section */}
+        <footer className="mt-12 mb-8">
+          <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
+            <div className="flex flex-col items-center gap-4">
+              {/* Powered By Section */}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-400 text-sm font-light">Powered by</span>
+                <img 
+                  src="/kenbright-logo.png" 
+                  alt="Kenbright" 
+                  className="h-16 w-auto opacity-80 hover:opacity-100 transition-opacity duration-200"
+                />
+                <span className="text-gray-400 text-sm font-light">AI</span>
+              </div>
+              
+              {/* Additional Info */}
+              <div className="text-center">
+                <p className="text-gray-500 text-xs">
+                  © {new Date().getFullYear()} Kenbright. All rights reserved.  
+                </p>
+                <p className="text-gray-600 text-xs mt-1">
+                  Version 1.0.0 | IFRS 17 Training Platform
+                </p>
+              </div>
+            </div>
+          </div>
+        </footer>
+
       </div>
     </div>
   );
