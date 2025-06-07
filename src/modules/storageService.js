@@ -1,6 +1,12 @@
 // src/modules/storageService.js
+import { getUserStorageKey } from './userProfile';
 
-const STORAGE_KEY = 'ifrs17-progress';
+let STORAGE_KEY = 'ifrs17-progress';
+
+// Add function to set user-specific storage
+export const setStorageUser = (userId) => {
+  STORAGE_KEY = getUserStorageKey(userId);
+};
 
 // Save game state to localStorage
 export const saveGameState = (gameState) => {
@@ -116,3 +122,4 @@ export const importProgress = (jsonString) => {
     return null;
   }
 };
+

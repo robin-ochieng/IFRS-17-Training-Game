@@ -1,12 +1,17 @@
+// IFRS 17 Training Game Component
+
+
 import React, { useState, useEffect } from 'react';
 import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from 'lucide-react';
 import { modules } from './data/IFRS17Modules';
 import { achievementsList, getNewAchievements, createAchievementStats } from './modules/achievements';
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
 import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
+import { getCurrentUser, saveUser } from './modules/userProfile';
 
-
-const IFRS17TrainingGame = () => {
+// Add onLogout as a prop and remove the problematic import
+const IFRS17TrainingGame = ({ onLogout }) => {
+  const [currentUser, setCurrentUser] = useState(null);
   const [currentModule, setCurrentModule] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
@@ -28,6 +33,23 @@ const IFRS17TrainingGame = () => {
   const [perfectModulesCount, setPerfectModulesCount] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showAchievement, setShowAchievement] = useState(null);
+
+  // Load current user on component mount
+  useEffect(() => {
+    const user = getCurrentUser();
+    if (user) {
+      setCurrentUser(user);
+    } else {
+      // Fallback user if no user is found
+      setCurrentUser({
+        id: 'default-user',
+        name: 'Demo User',
+        email: 'demo@example.com',
+        organization: 'Demo Organization',
+        avatar: 'D'
+      });
+    }
+  }, []);
 
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
@@ -71,7 +93,6 @@ const IFRS17TrainingGame = () => {
       setPerfectModule(false);
     }
 
-
     setTimeout(() => {
       if (currentQuestion < modules[currentModule].questions.length - 1) {
         setCurrentQuestion(currentQuestion + 1);
@@ -99,11 +120,9 @@ const IFRS17TrainingGame = () => {
     
     switch(type) {
       case 'hint':
-        // TODO: Implement hint display logic
         console.log('Hint: Look for the most comprehensive answer that aligns with IFRS 17 principles');
         break;
       case 'eliminate':
-        // TODO: Implement eliminate logic to disable 2 wrong answers
         console.log('Eliminate: Two incorrect answers have been removed');
         break;
       case 'skip':
@@ -113,7 +132,7 @@ const IFRS17TrainingGame = () => {
             ...answeredQuestions, 
             [questionKey]: { answered: true, selectedAnswer: null, wasCorrect: false } 
           });
-          setPerfectModule(false); // Skipping means not perfect
+          setPerfectModule(false);
           setCurrentQuestion(currentQuestion + 1);
         }
         break;
@@ -141,14 +160,15 @@ const IFRS17TrainingGame = () => {
       setTimeout(() => setShowAchievement(null), 2500);
     }
   };
+
   const startNewModule = (moduleIndex) => {
     setCurrentModule(moduleIndex);
     setCurrentQuestion(0);
     setModuleScore(0);
     setPerfectModule(true);
-    // Refresh some power-ups
     setPowerUps(prev => refreshPowerUps(prev));
   };
+
   useEffect(() => {
     checkAchievementConditions();
   }, [score, streak, level, combo, completedModules]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -183,7 +203,6 @@ const IFRS17TrainingGame = () => {
   const resetProgress = () => {
     if (window.confirm('⚠️ Are you sure you want to reset all progress?\n\nThis will delete:\n• Your score and level\n• All completed modules\n• All achievements\n• All answered questions\n\nThis action cannot be undone!')) {
       clearGameState();
-      // Reset all state to initial values
       setCurrentModule(0);
       setCurrentQuestion(0);
       setScore(0);
@@ -224,7 +243,6 @@ const IFRS17TrainingGame = () => {
       setCombo(savedState.combo || 0);
       setPerfectModulesCount(savedState.perfectModulesCount || 0);
       
-      // Restore achievements by ID
       const restoredAchievements = achievementsList.filter(a => 
         savedState.achievements?.includes(a.id)
       );
@@ -232,11 +250,43 @@ const IFRS17TrainingGame = () => {
     }
   }, []);
 
+  const handleLogout = () => {
+    if (onLogout) {
+      onLogout();
+    } else {
+      console.log('Logout function not provided');
+    }
+  };
 
+  // Don't render until currentUser is loaded
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+        <div className="text-white text-xl">Loading user data...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-4">
       <div className="max-w-6xl mx-auto">
+        <div className="flex justify-between items-center mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
+              {currentUser.avatar}
+            </div>
+            <div>
+              <p className="text-white font-semibold">{currentUser.name}</p>
+              <p className="text-gray-400 text-xs">{currentUser.organization}</p>
+            </div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="text-gray-400 hover:text-white text-sm transition-colors"
+          >
+            Switch User
+          </button>
+        </div>
         <div className="relative mb-6">
           <img 
             src="/kenbright-logo.png" 
@@ -546,26 +596,26 @@ const IFRS17TrainingGame = () => {
           </button>
         </div>
         {/* Professional Footer Section */}
-        <footer className="mt-12 mb-8">
+        <footer className="mt-6 mb-4">
           <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
             <div className="flex flex-col items-center gap-4">
               {/* Powered By Section */}
               <div className="flex items-center gap-2">
-                <span className="text-gray-400 text-sm font-light">Powered by</span>
+                <span className="text-gray-300 text-sm font-light">Powered by</span>
                 <img 
                   src="/kenbright-logo.png" 
                   alt="Kenbright" 
                   className="h-16 w-auto opacity-80 hover:opacity-100 transition-opacity duration-200"
                 />
-                <span className="text-gray-400 text-sm font-light">AI</span>
+                <span className="text-gray-300 text-sm font-light">AI</span>
               </div>
               
               {/* Additional Info */}
               <div className="text-center">
-                <p className="text-gray-500 text-xs">
+                <p className="text-gray-300 text-xs">
                   © {new Date().getFullYear()} Kenbright. All rights reserved.  
                 </p>
-                <p className="text-gray-600 text-xs mt-1">
+                <p className="text-gray-300 text-xs mt-1">
                   Version 1.0.0 | IFRS 17 Training Platform
                 </p>
               </div>
