@@ -162,11 +162,23 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   };
 
   const startNewModule = (moduleIndex) => {
+    // Clear any previously answered questions for this module
+    const updatedAnsweredQuestions = { ...answeredQuestions };
+    const moduleQuestionCount = modules[moduleIndex]?.questions?.length || 0;
+    
+    // Remove any existing answers for this module
+    for (let i = 0; i < moduleQuestionCount; i++) {
+      delete updatedAnsweredQuestions[`${moduleIndex}-${i}`];
+    }
+    
+    setAnsweredQuestions(updatedAnsweredQuestions);
     setCurrentModule(moduleIndex);
     setCurrentQuestion(0);
     setModuleScore(0);
     setPerfectModule(true);
     setPowerUps(prev => refreshPowerUps(prev));
+    setShowFeedback(false);
+    setSelectedAnswer(null);
   };
 
   useEffect(() => {
@@ -276,7 +288,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               {currentUser.avatar}
             </div>
             <div>
-              <p className="text-white font-semibold">{currentUser.name}</p>
+              <p className="text-white font-semibold text-sm md:text-base">{currentUser.name}</p>
               <p className="text-gray-400 text-xs">{currentUser.organization}</p>
             </div>
           </div>
@@ -287,38 +299,39 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             Switch User
           </button>
         </div>
-        <div className="relative mb-6">
+        <div className="mb-6 relative">
           <img 
             src="/kenbright-logo.png" 
             alt="Kenbright Logo" 
-            className="absolute left-0 top-1/2 transform -translate-y-1/2 h-20 w-auto"
+            className="absolute left-0 top-1/2 transform -translate-y-1/2 h-8 md:h-12 lg:h-16 w-auto z-10"
           />
-          <h1 className="text-3xl font-bold text-white text-center py-2">IFRS 17 Master: Regulatory Training Game</h1>
+          <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
+            IFRS 17 Master: Regulatory Training Game
+          </h1>
         </div>
-        
         <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 mb-6 border border-white/10">
-          <div className="flex flex-wrap gap-4 justify-between items-center">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             <div className="flex items-center gap-2">
-              <Trophy className="text-yellow-400 w-8 h-8" />
+              <Trophy className="text-yellow-400 w-6 h-6 md:w-8 md:h-8" />
               <div>
-                <p className="text-gray-400 text-sm">Score</p>
-                <p className="text-2xl font-bold text-white">{score.toLocaleString()}</p>
+                <p className="text-gray-400 text-xs md:text-sm">Score</p>
+                <p className="text-lg md:text-2xl font-bold text-white">{score.toLocaleString()}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
-              <Zap className="text-orange-400 w-8 h-8" />
+              <Zap className="text-orange-400 w-6 h-6 md:w-8 md:h-8" />
               <div>
-                <p className="text-gray-400 text-sm">Streak</p>
-                <p className="text-2xl font-bold text-white">{streak}</p>
+                <p className="text-gray-400 text-xs md:text-sm">Streak</p>
+                <p className="text-lg md:text-2xl font-bold text-white">{streak}</p>
               </div>
             </div>
             
             <div className="flex items-center gap-2">
-              <Star className="text-purple-400 w-8 h-8" />
+              <Star className="text-purple-400 w-6 h-6 md:w-8 md:h-8" />
               <div>
-                <p className="text-gray-400 text-sm">Level {level}</p>
-                <div className="w-32 h-3 bg-gray-700 rounded-full overflow-hidden">
+                <p className="text-gray-400 text-xs md:text-sm">Level {level}</p>
+                <div className="w-20 md:w-32 h-2 md:h-3 bg-gray-700 rounded-full overflow-hidden">
                   <div 
                     className="h-full bg-gradient-to-r from-purple-400 to-pink-400 transition-all duration-500"
                     style={{ width: `${(xp / (level * 100)) * 100}%` }}
@@ -328,23 +341,23 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
             
             <div className="flex items-center gap-2">
-              <TrendingUp className="text-green-400 w-8 h-8" />
+              <TrendingUp className="text-green-400 w-6 h-6 md:w-8 md:h-8" />
               <div>
-                <p className="text-gray-400 text-sm">Combo</p>
-                <p className="text-2xl font-bold text-white">x{combo + 1}</p>
+                <p className="text-gray-400 text-xs md:text-sm">Combo</p>
+                <p className="text-lg md:text-2xl font-bold text-white">x{combo + 1}</p>
               </div>
             </div>
           </div>
         </div>
 
         <div className="mb-8">
-          <h2 className="text-2xl font-bold text-white mb-4">
+          <h2 className="text-xl md:text-2xl font-bold text-white mb-4">
             IFRS 17 Training Modules 
-            <span className="text-lg font-normal text-gray-300 ml-4">
+            <span className="text-sm md:text-lg font-normal text-gray-300 ml-2 md:ml-4">
               ({completedModules.length}/{modules.length} completed)
             </span>
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
             {modules.map((module, index) => (
               <button
                 key={index}
@@ -354,7 +367,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   }
                 }}
                 disabled={!unlockedModules.includes(index) || completedModules.includes(index) || (index === currentModule && !showModuleComplete)}
-                className={`relative p-4 rounded-xl transition-all duration-300 ${
+                className={`relative p-3 md:p-4 rounded-xl transition-all duration-300 ${
                   completedModules.includes(index)
                     ? 'bg-gradient-to-br from-green-600 to-green-700 transform cursor-not-allowed shadow-lg ring-2 ring-green-400'
                     : index === currentModule && !completedModules.includes(index)
@@ -365,13 +378,13 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 }`}
               >
                 {completedModules.includes(index) && (
-                  <CheckCircle className="absolute top-2 right-2 w-6 h-6 text-white" />
+                  <CheckCircle className="absolute top-1 right-1 md:top-2 md:right-2 w-4 h-4 md:w-6 md:h-6 text-white" />
                 )}
                 {!unlockedModules.includes(index) && (
-                  <Lock className="absolute top-2 right-2 w-4 h-4 text-gray-500" />
+                  <Lock className="absolute top-1 right-1 md:top-2 md:right-2 w-3 h-3 md:w-4 md:h-4 text-gray-500" />
                 )}
-                <div className="text-3xl mb-2">{module.icon}</div>
-                <p className="text-white text-sm font-semibold">{module.title}</p>
+                <div className="text-2xl md:text-3xl mb-1 md:mb-2">{module.icon}</div>
+                <p className="text-white text-xs md:text-sm font-semibold">{module.title}</p>
                 {completedModules.includes(index) && (
                   <p className="text-xs text-green-200 mt-1">Completed!</p>
                 )}
@@ -420,15 +433,18 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   : "Congratulations! You've completed all modules!"}
               </p>
               {currentModule < modules.length - 1 ? (
-                <button
-                  onClick={() => {
+              <button
+                onClick={() => {
+                  setShowModuleComplete(false);
+                  // Small delay to ensure modal closes before starting new module
+                  setTimeout(() => {
                     startNewModule(currentModule + 1);
-                    setShowModuleComplete(false);
-                  }}
-                  className="mt-4 px-6 py-3 bg-white text-purple-600 rounded-full font-bold hover:bg-gray-100 transition-all transform hover:scale-105"
-                >
-                  Start Next Module →
-                </button>
+                  }, 100);
+                }}
+                className="mt-4 px-6 py-3 bg-white text-purple-600 rounded-full font-bold hover:bg-gray-100 transition-all transform hover:scale-105"
+              >
+                Start Next Module →
+              </button>
               ) : (
                 <button
                   onClick={() => {
@@ -446,8 +462,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         {modules[currentModule] && completedModules.length < modules.length && !completedModules.includes(currentModule) && (
           <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 border border-white/10">
             <div className="mb-6">
-              <div className="flex justify-between items-center mb-4">
-                <h3 className="text-xl font-bold text-white">
+              <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                <h3 className="text-lg md:text-xl font-bold text-white">
                   {modules[currentModule].title} - Question {currentQuestion + 1}/{modules[currentModule].questions.length}
                 </h3>
                 <div className="flex gap-2">
@@ -456,14 +472,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                       key={type}
                       onClick={() => handlePowerUp(type)}
                       disabled={count === 0}
-                      className={`px-3 py-1 rounded-lg text-sm font-semibold transition-all ${
+                      className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
                         count > 0 
                           ? 'bg-purple-600 hover:bg-purple-700 text-white' 
                           : 'bg-gray-700 text-gray-500 cursor-not-allowed'
                       }`}
                     >
-                      {getPowerUpInfo(type)?.icon}
-                      {count}
+                    {getPowerUpInfo(type)?.icon}
+                    {count}
                     </button>
                   ))}
                 </div>
@@ -476,11 +492,11 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 />
               </div>
               
-              <div className="flex gap-2 justify-center mb-6">
+              <div className="flex gap-1 md:gap-2 justify-center mb-6 flex-wrap">
                 {modules[currentModule].questions.map((_, idx) => (
                   <div
                     key={idx}
-                    className={`w-3 h-3 rounded-full transition-all ${
+                    className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all ${
                       answeredQuestions[`${currentModule}-${idx}`]?.answered
                         ? answeredQuestions[`${currentModule}-${idx}`]?.wasCorrect ? 'bg-green-400' : 'bg-red-400'
                         : idx === currentQuestion
@@ -491,15 +507,27 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 ))}
               </div>
               
-              <p className="text-xl text-white mb-6">
+              <p className="text-base md:text-xl text-white mb-6">
                 {modules[currentModule].questions[currentQuestion].question}
               </p>
               
               {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && !showFeedback && (
                 <div className="bg-yellow-500/20 border border-yellow-400 rounded-lg p-3 mb-4">
-                  <p className="text-yellow-300 text-center">
-                    ⚠️ You've already answered this question, Use the Next button to progress to the next question.
+                  <p className="text-yellow-300 text-center text-sm md:text-base mb-2">
+                    ⚠️ You've already answered this question.
                   </p>
+                  {currentQuestion < modules[currentModule].questions.length - 1 && (
+                    <button
+                      onClick={() => {
+                        setCurrentQuestion(currentQuestion + 1);
+                        setShowFeedback(false);
+                        setSelectedAnswer(null);
+                      }}
+                      className="mx-auto block bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm md:text-base font-semibold transition-colors"
+                    >
+                      Next Question →
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -510,7 +538,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   key={index}
                   onClick={() => !showFeedback && !answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && handleAnswer(index)}
                   disabled={showFeedback || answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered}
-                  className={`p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-102 ${
+                  className={`p-3 md:p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-102 text-sm md:text-base ${
                     answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered
                       ? answeredQuestions[`${currentModule}-${currentQuestion}`]?.selectedAnswer === index
                         ? answeredQuestions[`${currentModule}-${currentQuestion}`]?.wasCorrect
@@ -531,15 +559,15 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{option}</span>
                     {showFeedback && selectedAnswer === index && (
-                      isCorrect ? <CheckCircle className="w-5 h-5" /> : <XCircle className="w-5 h-5" />
+                      isCorrect ? <CheckCircle className="w-4 h-4 md:w-5 md:h-5" /> : <XCircle className="w-4 h-4 md:w-5 md:h-5" />
                     )}
                     {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && (
                       answeredQuestions[`${currentModule}-${currentQuestion}`]?.selectedAnswer === index ? (
                         answeredQuestions[`${currentModule}-${currentQuestion}`]?.wasCorrect ? 
-                          <CheckCircle className="w-5 h-5 text-green-400" /> : 
-                          <XCircle className="w-5 h-5 text-red-400" />
+                          <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-400" /> : 
+                          <XCircle className="w-4 h-4 md:w-5 md:h-5 text-red-400" />
                       ) : index === modules[currentModule].questions[currentQuestion].correct ? (
-                        <CheckCircle className="w-5 h-5 text-green-400" />
+                        <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-400" />
                       ) : null
                     )}
                   </div>
@@ -551,12 +579,12 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               <div className={`mt-6 p-4 rounded-xl ${
                 isCorrect ? 'bg-green-500/20 border border-green-400' : 'bg-blue-500/20 border border-blue-400'
               }`}>
-                <p className={`${isCorrect ? 'text-green-400' : 'text-blue-400'} font-semibold mb-2`}>
+                <p className={`${isCorrect ? 'text-green-400' : 'text-blue-400'} font-semibold mb-2 text-sm md:text-base`}>
                   {isCorrect ? `🎉 Excellent! +${10 * (combo)} points` : 'Not quite right, but here\'s the explanation:'}
                   {isCorrect && combo >= 3 && ' 🔥 COMBO!'}
                   {isCorrect && streak >= 5 && ' ⚡ STREAK!'}
                 </p>
-                <p className="text-gray-300">
+                <p className="text-gray-300 text-sm md:text-base">
                   {modules[currentModule].questions[currentQuestion].explanation}
                 </p>
               </div>
@@ -597,17 +625,17 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         </div>
         {/* Professional Footer Section */}
         <footer className="mt-6 mb-4">
-          <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-6 border border-white/10">
-            <div className="flex flex-col items-center gap-4">
+          <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/10">
+            <div className="flex flex-col items-center gap-2 md:gap-4">
               {/* Powered By Section */}
-              <div className="flex items-center gap-2">
-                <span className="text-gray-300 text-sm font-light">Powered by</span>
+              <div className="flex items-center gap-1 md:gap-2">
+                <span className="text-gray-300 text-xs md:text-sm font-light">Powered by</span>
                 <img 
                   src="/kenbright-logo.png" 
                   alt="Kenbright" 
-                  className="h-16 w-auto opacity-80 hover:opacity-100 transition-opacity duration-200"
+                  className="h-12 md:h-16 w-auto opacity-80 hover:opacity-100 transition-opacity duration-200"
                 />
-                <span className="text-gray-300 text-sm font-light">AI</span>
+                <span className="text-gray-300 text-xs md:text-sm font-light">AI</span>
               </div>
               
               {/* Additional Info */}
