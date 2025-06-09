@@ -8,6 +8,7 @@ import { achievementsList, getNewAchievements, createAchievementStats } from './
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
 import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
 import { getCurrentUser, saveUser } from './modules/userProfile';
+import { submitToLeaderboard, getLeaderboard } from './modules/supabaseLeaderboard';
 
 // Add onLogout as a prop and remove the problematic import
 const IFRS17TrainingGame = ({ onLogout }) => {
@@ -33,7 +34,12 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [perfectModulesCount, setPerfectModulesCount] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showAchievement, setShowAchievement] = useState(null);
-
+  const [moduleScores, setModuleScores] = useState({});
+  const [showCertificate, setShowCertificate] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [leaderboardData, setLeaderboardData] = useState([]);
+  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+   
   // Load current user on component mount
   useEffect(() => {
     const user = getCurrentUser();
@@ -102,9 +108,21 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         if (perfectModule) {
           setPerfectModulesCount(prev => prev + 1);
         }        
+
+        // Save module score
+        setModuleScores(prev => ({
+          ...prev,
+          [currentModule]: moduleScore
+        }));       
+
         setShowModuleComplete(true);
         setCompletedModules([...completedModules, currentModule]);
         saveProgress();
+
+        // Submit to leaderboard if all modules completed
+        if (completedModules.length === modules.length - 1) {
+          submitUserScore();
+        }       
         
         if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
           setUnlockedModules([...unlockedModules, currentModule + 1]);
@@ -180,6 +198,52 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setShowFeedback(false);
     setSelectedAnswer(null);
   };
+
+  const submitUserScore = async () => {
+    const userData = {
+      id: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email,
+      organization: currentUser.organization,
+      avatar: currentUser.avatar,
+      score: score,
+      level: level,
+      achievements: achievements.length,
+      modulesCompleted: completedModules.length,
+      perfectModules: perfectModulesCount
+    };
+    
+    const result = await submitToLeaderboard(userData);
+    
+    if (result.success) {
+      console.log('Score submitted successfully!');
+    }
+  };
+
+  const loadLeaderboardData = async () => {
+    setIsLoadingLeaderboard(true);
+    
+    try {
+      // Fetch leaderboard from Supabase
+      const leaderboard = await getLeaderboard();
+      
+      // Add rank and mark current user
+      const rankedLeaderboard = leaderboard.map((user, index) => ({
+        ...user,
+        rank: index + 1,
+        isCurrentUser: user.user_id === currentUser.id,
+        // Map database fields to component fields
+        name: user.user_name,
+        id: user.user_id
+      }));
+      
+      setLeaderboardData(rankedLeaderboard);
+    } catch (error) {
+      console.error('Failed to load leaderboard:', error);
+    } finally {
+      setIsLoadingLeaderboard(false);
+    }
+  };  
 
   useEffect(() => {
     checkAchievementConditions();
@@ -349,6 +413,19 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
           </div>
         </div>
+          {/* Add Leaderboard Button - ADD THIS SECTION */}
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => {
+                loadLeaderboardData();
+                setShowLeaderboard(true);
+              }}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-full font-semibold transition-all transform hover:scale-105 inline-flex items-center gap-2"
+            >
+              <Trophy className="w-4 h-4" />
+              View Leaderboard
+            </button>
+          </div>
 
         <div className="mb-8">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-4">
@@ -612,6 +689,146 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   <span className="text-white font-medium">{achievement.name}</span>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+        {/* Leaderboard Modal - ADD THIS ENTIRE SECTION */}
+        {showLeaderboard && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="bg-gradient-to-br from-gray-900 to-blue-900 rounded-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-white/10">
+              <div className="p-6 md:p-8">
+                {/* Header */}
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-3">
+                    <Trophy className="w-8 h-8 text-yellow-400" />
+                    <h2 className="text-2xl md:text-3xl font-bold text-white">Global Leaderboard</h2>
+                  </div>
+                  <button
+                    onClick={() => setShowLeaderboard(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <XCircle className="w-6 h-6" />
+                  </button>
+                </div>
+
+                {/* Loading State */}
+                {isLoadingLeaderboard ? (
+                  <div className="flex items-center justify-center h-64">
+                    <div className="text-white text-lg">Loading leaderboard...</div>
+                  </div>
+                ) : leaderboardData.length === 0 ? (
+                  <div className="text-center py-8">
+                    <p className="text-gray-400">No scores yet. Be the first to complete the training!</p>
+                  </div>
+                ) : (
+                  <>
+                    {/* Current User Position */}
+                    {leaderboardData.find(user => user.isCurrentUser) && (
+                      <div className="bg-purple-600/20 border border-purple-400/50 rounded-lg p-4 mb-6">
+                        <p className="text-purple-300 text-sm mb-1">Your Position</p>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl font-bold text-white">
+                              #{leaderboardData.find(user => user.isCurrentUser).rank}
+                            </span>
+                            <span className="text-white font-semibold">{currentUser.name}</span>
+                          </div>
+                          <span className="text-yellow-400 font-bold">{score.toLocaleString()} points</span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Leaderboard Table */}
+                    <div className="overflow-y-auto max-h-[50vh]">
+                      <div className="space-y-2">
+                        {leaderboardData.map((user, index) => (
+                          <div
+                            key={user.id}
+                            className={`rounded-lg p-4 transition-all ${
+                              user.isCurrentUser
+                                ? 'bg-gradient-to-r from-purple-600/30 to-pink-600/30 border border-purple-400/50'
+                                : 'bg-white/5 hover:bg-white/10 border border-white/10'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-4">
+                                {/* Rank Badge */}
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+                                  user.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' :
+                                  user.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800' :
+                                  user.rank === 3 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white' :
+                                  'bg-gray-700 text-gray-300'
+                                }`}>
+                                  {user.rank <= 3 ? '🏆' : user.rank}
+                                </div>
+                                
+                                {/* User Info */}
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                                    user.isCurrentUser ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'
+                                  }`}>
+                                    {user.avatar}
+                                  </div>
+                                  <div>
+                                    <p className="text-white font-semibold flex items-center gap-2">
+                                      {user.name}
+                                      {user.isCurrentUser && <span className="text-xs bg-purple-600 px-2 py-1 rounded-full">You</span>}
+                                    </p>
+                                    <p className="text-gray-400 text-sm">{user.organization}</p>
+                                  </div>
+                                </div>
+                              </div>
+                              
+                              {/* Stats */}
+                              <div className="flex items-center gap-6">
+                                <div className="text-right">
+                                  <p className="text-yellow-400 font-bold text-lg">{user.score.toLocaleString()}</p>
+                                  <p className="text-gray-400 text-xs">points</p>
+                                </div>
+                                <div className="hidden md:flex items-center gap-4">
+                                  <div className="text-center">
+                                    <p className="text-purple-400 font-semibold">{user.level}</p>
+                                    <p className="text-gray-500 text-xs">Level</p>
+                                  </div>
+                                  <div className="text-center">
+                                    <p className="text-green-400 font-semibold">{user.achievements}</p>
+                                    <p className="text-gray-500 text-xs">Awards</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Footer Stats */}
+                    <div className="mt-6 grid grid-cols-3 gap-4">
+                      <div className="bg-white/5 rounded-lg p-4 text-center">
+                        <p className="text-gray-400 text-sm mb-1">Total Players</p>
+                        <p className="text-2xl font-bold text-white">{leaderboardData.length}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 text-center">
+                        <p className="text-gray-400 text-sm mb-1">Your Percentile</p>
+                        <p className="text-2xl font-bold text-purple-400">
+                          Top {Math.round((leaderboardData.find(u => u.isCurrentUser)?.rank / leaderboardData.length) * 100)}%
+                        </p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 text-center">
+                        <p className="text-gray-400 text-sm mb-1">Points to Next</p>
+                        <p className="text-2xl font-bold text-yellow-400">
+                          {(() => {
+                            const currentRank = leaderboardData.find(u => u.isCurrentUser)?.rank;
+                            if (currentRank === 1) return '👑';
+                            const nextUser = leaderboardData[currentRank - 2];
+                            return nextUser ? `+${(nextUser.score - score).toLocaleString()}` : '-';
+                          })()}
+                        </p>
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         )}
