@@ -367,7 +367,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           <img 
             src="/kenbright-logo.png" 
             alt="Kenbright Logo" 
-            className="absolute left-0 top-1/2 transform -translate-y-1/2 h-8 md:h-12 lg:h-16 w-auto z-10"
+            className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-12 lg:h-16 w-auto z-10"
           />
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
             IFRS 17 Master: Regulatory Training Game
@@ -420,10 +420,13 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 loadLeaderboardData();
                 setShowLeaderboard(true);
               }}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-6 py-2 rounded-full font-semibold transition-all transform hover:scale-105 inline-flex items-center gap-2"
-            >
-              <Trophy className="w-4 h-4" />
+            className="group relative bg-black/30 backdrop-blur-sm border border-purple-400/30 hover:border-purple-400 text-white px-4 py-2 md:px-6 md:py-2 rounded-full font-medium transition-all transform hover:scale-105 inline-flex items-center gap-2 text-sm md:text-base"
+          >
+            <Trophy className="w-4 h-4 text-purple-400 group-hover:text-yellow-400 transition-colors" />
+            <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">
               View Leaderboard
+            </span>
+            <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-600/20 to-pink-600/20 blur-lg group-hover:blur-xl transition-all opacity-0 group-hover:opacity-100"></div>
             </button>
           </div>
 
