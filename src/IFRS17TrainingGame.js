@@ -91,7 +91,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         setLevel(level + 1);
         setXp((xp + 25) % (level * 100));
         setShowLevelUp(true);
-        setTimeout(() => setShowLevelUp(false), 2500);
+        setTimeout(() => setShowLevelUp(false), 5000);
       }
     } else {
       setStreak(0);
@@ -128,7 +128,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           setUnlockedModules([...unlockedModules, currentModule + 1]);
         }
       }
-    }, 2500);
+    }, 5000);
   };
 
   const handlePowerUp = (type) => {
@@ -175,7 +175,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       const firstNewAchievement = newAchievements[0];
       setAchievements(prev => [...prev, firstNewAchievement]);
       setShowAchievement(firstNewAchievement);
-      setTimeout(() => setShowAchievement(null), 2500);
+      setTimeout(() => setShowAchievement(null), 5000);
     }
   };
 
