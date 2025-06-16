@@ -7,7 +7,7 @@ import { modules } from './data/IFRS17Modules';
 import { achievementsList, getNewAchievements, createAchievementStats } from './modules/achievements';
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
 import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
-import { getCurrentUser, saveUser } from './modules/userProfile';
+import { getCurrentUser } from './modules/userProfile';
 import { submitToLeaderboard, getLeaderboard, submitModuleScore,  getModuleLeaderboard, getUserModuleRank} from './modules/supabaseLeaderboard';
 
 // Add onLogout as a prop and remove the problematic import
@@ -41,8 +41,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [leaderboardView, setLeaderboardView] = useState('overall'); // 'overall' or module index
   const [moduleStartTime, setModuleStartTime] = useState(null);
-  const [currentModuleScore, setCurrentModuleScore] = useState(0);
-   
+  const [completedModuleScore, setCompletedModuleScore] = useState(0);
+  
   // Load current user on component mount
   // Load current user on component mount
   useEffect(() => {
@@ -103,8 +103,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
 
     if (correct) {
       const points = 10 * (combo + 1);
-      setScore(prevScore => prevScore + points);
-      setCurrentModuleScore(prevModuleScore => prevModuleScore + points); // Use state updater
+      setScore(score + points);
+      setModuleScore(prev => prev + points);
       setStreak(streak + 1);
       setCombo(combo + 1);
       setXp(xp + 25);
@@ -135,10 +135,9 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           setShowFeedback(false);
           setSelectedAnswer(null);
         } else {
-          // Module completed
-          const finalModuleScore = currentModuleScore; // Capture the final score
-          
-          console.log('Module completed with score:', finalModuleScore);
+
+         // Store the module score for the modal
+        setCompletedModuleScore(moduleScore);
 
         if (perfectModule) {
           setPerfectModulesCount(prev => prev + 1);
@@ -147,56 +146,44 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         // Save module score
         setModuleScores(prev => ({
           ...prev,
-          [currentModule]: finalModuleScore
+          [currentModule]: moduleScore
         }));       
 
 
         // Submit to Supabase BEFORE showing completion modal
         const endTime = new Date();
         const timeTaken = moduleStartTime ? Math.floor((endTime - moduleStartTime) / 1000) : null;
-        
-        try {
-          const submissionResult = await submitModuleScore({
-            userId: currentUser.id,
-            moduleId: currentModule,
-            moduleName: modules[currentModule].title,
-            userName: currentUser.name,
-            userEmail: currentUser.email || '',
-            organization: currentUser.organization || '',
-            avatar: currentUser.avatar,
-            country: currentUser.country || 'Unknown',
-            score: finalModuleScore,
-            perfectCompletion: perfectModule,
-            completionTime: timeTaken
-          });
           
-          if (submissionResult.success) {
-            console.log('Module score submitted successfully!');
-          } else {
-            console.error('Failed to submit module score:', submissionResult.error);
-            // Optionally show an error message to the user
-          }
-        } catch (error) {
-          console.error('Error submitting module score:', error);
-        }
+      await submitModuleScore({
+        userId: currentUser.id,
+        moduleId: currentModule,
+        moduleName: modules[currentModule].title,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        organization: currentUser.organization,
+        avatar: currentUser.avatar,
+        country: currentUser.country || 'Unknown',
+        score: moduleScore,
+        perfectCompletion: perfectModule,
+        completionTime: timeTaken
+      });
 
-        // Show completion modal and update state
-        setShowModuleComplete(true);
-        setCompletedModules([...completedModules, currentModule]);
-        saveProgress();
+      setShowModuleComplete(true);
+      setCompletedModules([...completedModules, currentModule]);
+      saveProgress();
 
-        // Submit to overall leaderboard if all modules completed
-        if (completedModules.length === modules.length - 1) {
-          submitUserScore();
-        }
-        
-        if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
-          setUnlockedModules([...unlockedModules, currentModule + 1]);
-        }
+      // Submit to overall leaderboard if all modules completed
+      if (completedModules.length === modules.length - 1) {
+        submitUserScore();
       }
-    }, 7000);
-};
-
+      
+      if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
+        setUnlockedModules([...unlockedModules, currentModule + 1]);
+      }
+    }
+  }, 7000);
+  };
+  
   const handlePowerUp = (type) => {
     if (!canUsePowerUp(powerUps, type)) return;
     
@@ -259,7 +246,6 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setCurrentModule(moduleIndex);
     setCurrentQuestion(0);
     setModuleScore(0);
-    setCurrentModuleScore(0); 
     setPerfectModule(true);
     setPowerUps(prev => refreshPowerUps(prev));
     setShowFeedback(false);
@@ -376,6 +362,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setModuleScore(0);
       setPerfectModule(true);
       setPerfectModulesCount(0);
+      setCompletedModuleScore(0);      
       setShowLevelUp(false);
       setShowAchievement(null);
       setModuleStartTime(null);
@@ -529,13 +516,13 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   if (unlockedModules.includes(index) && 
                       !completedModules.includes(index) && 
                       index !== currentModule) {
-                    console.log(`Starting new module: ${module.title}`);
+                    // console.log(`Starting new module: ${module.title}`);
                     startNewModule(index);
                   } else {
-                    console.log(`Cannot start module ${index}: 
-                      Unlocked: ${unlockedModules.includes(index)}, 
-                      Completed: ${completedModules.includes(index)}, 
-                      Current: ${index === currentModule}`);
+                    // console.log(`Cannot start module ${index}: 
+                    //   Unlocked: ${unlockedModules.includes(index)}, 
+                    //   Completed: ${completedModules.includes(index)}, 
+                    //   Current: ${index === currentModule}`);
                   }
                 }}
                 disabled={!unlockedModules.includes(index) || completedModules.includes(index) || (index === currentModule && !showModuleComplete)}
@@ -592,7 +579,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               <h2 className="text-4xl font-bold text-white mb-4">Module Complete! 🎉</h2>
               <p className="text-2xl text-white mb-2">{modules[currentModule].title}</p>
               <p className="text-xl text-yellow-300 mb-4">
-                Score: {moduleScore} points
+                Score: {completedModuleScore} points
+                {/* Use moduleScores[currentModule] as primary source, fall back to moduleScore */}
               </p>
               {perfectModule && (
                 <p className="text-2xl text-yellow-400 font-bold mb-4 animate-pulse">
