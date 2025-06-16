@@ -41,6 +41,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [leaderboardView, setLeaderboardView] = useState('overall'); // 'overall' or module index
   const [moduleStartTime, setModuleStartTime] = useState(null);
+  const [currentModuleScore, setCurrentModuleScore] = useState(0);
    
   // Load current user on component mount
   // Load current user on component mount
@@ -102,8 +103,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
 
     if (correct) {
       const points = 10 * (combo + 1);
-      setScore(score + points);
-      setModuleScore(moduleScore + points);
+      setScore(prevScore => prevScore + points);
+      setCurrentModuleScore(prevModuleScore => prevModuleScore + points); // Use state updater
       setStreak(streak + 1);
       setCombo(combo + 1);
       setXp(xp + 25);
@@ -129,11 +130,16 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
 
     setTimeout(async () => {
-      if (currentQuestion < modules[currentModule].questions.length - 1) {
-        setCurrentQuestion(currentQuestion + 1);
-        setShowFeedback(false);
-        setSelectedAnswer(null);
-      } else {
+        if (currentQuestion < modules[currentModule].questions.length - 1) {
+          setCurrentQuestion(currentQuestion + 1);
+          setShowFeedback(false);
+          setSelectedAnswer(null);
+        } else {
+          // Module completed
+          const finalModuleScore = currentModuleScore; // Capture the final score
+          
+          console.log('Module completed with score:', finalModuleScore);
+
         if (perfectModule) {
           setPerfectModulesCount(prev => prev + 1);
         }        
@@ -141,40 +147,55 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         // Save module score
         setModuleScores(prev => ({
           ...prev,
-          [currentModule]: moduleScore
+          [currentModule]: finalModuleScore
         }));       
 
+
+        // Submit to Supabase BEFORE showing completion modal
+        const endTime = new Date();
+        const timeTaken = moduleStartTime ? Math.floor((endTime - moduleStartTime) / 1000) : null;
+        
+        try {
+          const submissionResult = await submitModuleScore({
+            userId: currentUser.id,
+            moduleId: currentModule,
+            moduleName: modules[currentModule].title,
+            userName: currentUser.name,
+            userEmail: currentUser.email || '',
+            organization: currentUser.organization || '',
+            avatar: currentUser.avatar,
+            country: currentUser.country || 'Unknown',
+            score: finalModuleScore,
+            perfectCompletion: perfectModule,
+            completionTime: timeTaken
+          });
+          
+          if (submissionResult.success) {
+            console.log('Module score submitted successfully!');
+          } else {
+            console.error('Failed to submit module score:', submissionResult.error);
+            // Optionally show an error message to the user
+          }
+        } catch (error) {
+          console.error('Error submitting module score:', error);
+        }
+
+        // Show completion modal and update state
         setShowModuleComplete(true);
         setCompletedModules([...completedModules, currentModule]);
         saveProgress();
 
-        const endTime = new Date();
-        const timeTaken = moduleStartTime ? Math.floor((endTime - moduleStartTime) / 1000) : null;
-        await submitModuleScore({
-          userId: currentUser.id,
-          moduleId: currentModule,
-          moduleName: modules[currentModule].title,
-          userName: currentUser.name,
-          userEmail: currentUser.email,
-          organization: currentUser.organization,
-          avatar: currentUser.avatar,
-          country: currentUser.country || 'Unknown',
-          score: moduleScore,
-          perfectCompletion: perfectModule,
-          completionTime: timeTaken // in seconds
-        });        
-
-        // Submit to leaderboard if all modules completed
+        // Submit to overall leaderboard if all modules completed
         if (completedModules.length === modules.length - 1) {
           submitUserScore();
-        }       
+        }
         
         if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
           setUnlockedModules([...unlockedModules, currentModule + 1]);
         }
       }
     }, 7000);
-  };
+};
 
   const handlePowerUp = (type) => {
     if (!canUsePowerUp(powerUps, type)) return;
@@ -238,6 +259,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setCurrentModule(moduleIndex);
     setCurrentQuestion(0);
     setModuleScore(0);
+    setCurrentModuleScore(0); 
     setPerfectModule(true);
     setPowerUps(prev => refreshPowerUps(prev));
     setShowFeedback(false);
@@ -504,8 +526,16 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               <button
                 key={index}
                 onClick={() => {
-                  if (unlockedModules.includes(index) && !completedModules.includes(index) && index !== currentModule) {
+                  if (unlockedModules.includes(index) && 
+                      !completedModules.includes(index) && 
+                      index !== currentModule) {
+                    console.log(`Starting new module: ${module.title}`);
                     startNewModule(index);
+                  } else {
+                    console.log(`Cannot start module ${index}: 
+                      Unlocked: ${unlockedModules.includes(index)}, 
+                      Completed: ${completedModules.includes(index)}, 
+                      Current: ${index === currentModule}`);
                   }
                 }}
                 disabled={!unlockedModules.includes(index) || completedModules.includes(index) || (index === currentModule && !showModuleComplete)}

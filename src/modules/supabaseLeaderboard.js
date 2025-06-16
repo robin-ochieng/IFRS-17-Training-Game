@@ -50,32 +50,39 @@ export const submitToLeaderboard = async (userData) => {
 
 // Submit or update module-specific score
 export const submitModuleScore = async (moduleData) => {
+  console.log('submitModuleScore called with:', moduleData);
+  
   try {
+    const submissionData = {
+      user_id: moduleData.userId,
+      module_id: moduleData.moduleId,
+      module_name: moduleData.moduleName,
+      user_name: moduleData.userName,
+      user_email: moduleData.userEmail || '',
+      organization: moduleData.organization,
+      avatar: moduleData.avatar,
+      country: moduleData.country || 'Unknown',
+      score: moduleData.score,
+      perfect_completion: moduleData.perfectCompletion || false,
+      completion_time: moduleData.completionTime || null,
+      updated_at: new Date().toISOString()
+    };
+    
+    console.log('Submitting to Supabase:', submissionData);
+    
     const { data, error } = await supabase
       .from('module_leaderboard')
-      .upsert({
-        user_id: moduleData.userId,
-        module_id: moduleData.moduleId,
-        module_name: moduleData.moduleName,
-        user_name: moduleData.userName,
-        user_email: moduleData.userEmail || '',
-        organization: moduleData.organization,
-        avatar: moduleData.avatar,
-        country: moduleData.country || 'Unknown',
-        score: moduleData.score,
-        perfect_completion: moduleData.perfectCompletion || false,
-        completion_time: moduleData.completionTime || null,
-        updated_at: new Date().toISOString()
-      }, {
+      .upsert(submissionData, {
         onConflict: 'user_id,module_id',
         ignoreDuplicates: false
       });
 
     if (error) {
-      console.error('Error submitting module score:', error);
+      console.error('Supabase error submitting module score:', error);
       return { success: false, error };
     }
 
+    console.log('Module score submitted successfully:', data);
     return { success: true, data };
   } catch (error) {
     console.error('Failed to submit module score:', error);
@@ -107,6 +114,7 @@ export const getLeaderboard = async (limit = 100) => {
 
 // Get module-specific leaderboard
 export const getModuleLeaderboard = async (moduleId, limit = 100) => {
+  console.log(`Loading leaderboard for module ${moduleId}`);
   try {
     const { data, error } = await supabase
       .from('module_leaderboard')
@@ -119,7 +127,8 @@ export const getModuleLeaderboard = async (moduleId, limit = 100) => {
       console.error('Error fetching module leaderboard:', error);
       return [];
     }
-
+    
+    console.log(`Found ${data?.length || 0} entries for module ${moduleId}:`, data);
     return data || [];
   } catch (error) {
     console.error('Failed to fetch module leaderboard:', error);
