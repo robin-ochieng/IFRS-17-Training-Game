@@ -1,117 +1,225 @@
 // src/modules/userProfile.js
+import {
+  getAllUsersFromSupabase,
+  createUserInSupabase,
+  updateUserInSupabase,
+  deleteUserFromSupabase,
+  getCurrentUserFromSupabase,
+  setCurrentUserInSession,
+  clearCurrentUserSession,
+  migrateUsersToSupabase
+} from './supabaseUserService';
 
-// Storage key constants
+// Storage key constants (for backward compatibility)
 const USERS_KEY = 'ifrs17_users';
 const CURRENT_USER_KEY = 'ifrs17_current_user';
 
-// Get all users from storage
-export const getAllUsers = () => {
+// Initialize migration on module load
+let migrationPromise = null;
+const ensureMigration = async () => {
+  if (!migrationPromise) {
+    migrationPromise = migrateUsersToSupabase();
+  }
+  return migrationPromise;
+};
+
+// Get all users - now from Supabase
+export const getAllUsers = async () => {
   try {
-    const users = localStorage.getItem(USERS_KEY);
-    return users ? JSON.parse(users) : [];
+    // Ensure migration has happened
+    await ensureMigration();
+    
+    // Get users from Supabase
+    const users = await getAllUsersFromSupabase();
+    return users;
   } catch (error) {
     console.error('Error loading users:', error);
-    return [];
+    // Fallback to localStorage if Supabase fails
+    try {
+      const users = localStorage.getItem(USERS_KEY);
+      return users ? JSON.parse(users) : [];
+    } catch (localError) {
+      console.error('Error loading users from localStorage:', localError);
+      return [];
+    }
   }
 };
 
-// Save all users to storage
-const saveAllUsers = (users) => {
+// Create a new user profile - now in Supabase
+export const createUserProfile = async (name, email = '', organization = '', country = '') => {
   try {
-    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    const newUser = await createUserInSupabase(name, email, organization, country);
+    if (newUser) {
+      return newUser;
+    }
+    
+    // Fallback to local creation if Supabase fails
+    const avatar = name.charAt(0).toUpperCase();
+    return {
+      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      email,
+      organization,
+      avatar,
+      country,
+      createdAt: new Date().toISOString()
+    };
   } catch (error) {
-    console.error('Error saving users:', error);
+    console.error('Error creating user:', error);
+    // Fallback to local creation
+    const avatar = name.charAt(0).toUpperCase();
+    return {
+      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      email,
+      organization,
+      avatar,
+      country,
+      createdAt: new Date().toISOString()
+    };
   }
 };
 
-// Create a new user profile
-export const createUserProfile = (name, email = '', organization = '') => {
-  const avatar = name.charAt(0).toUpperCase();
-  const newUser = {
-    id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    name,
-    email,
-    organization,
-    avatar,
-    createdAt: new Date().toISOString()
-  };
-  return newUser;
-};
-
-// Save a new user
-export const saveUser = (user) => {
-  const users = getAllUsers();
-  const existingIndex = users.findIndex(u => u.id === user.id);
-  
-  if (existingIndex >= 0) {
-    users[existingIndex] = user;
-  } else {
-    users.push(user);
+// Save a user - now to Supabase
+export const saveUser = async (user) => {
+  try {
+    // Try to update first (in case user exists)
+    let savedUser = await updateUserInSupabase(user.id, user);
+    
+    // If update returns null, try to create
+    if (!savedUser) {
+      savedUser = await createUserInSupabase(
+        user.name,
+        user.email,
+        user.organization,
+        user.country
+      );
+    }
+    
+    // Also save to localStorage as backup
+    const users = await getAllUsers();
+    const existingIndex = users.findIndex(u => u.id === user.id);
+    
+    if (existingIndex >= 0) {
+      users[existingIndex] = user;
+    } else {
+      users.push(user);
+    }
+    
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    
+    return savedUser || user;
+  } catch (error) {
+    console.error('Error saving user:', error);
+    // Fallback to localStorage only
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const existingIndex = users.findIndex(u => u.id === user.id);
+    
+    if (existingIndex >= 0) {
+      users[existingIndex] = user;
+    } else {
+      users.push(user);
+    }
+    
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    return user;
   }
-  
-  saveAllUsers(users);
 };
 
 // Set the current user
 export const setCurrentUser = (userId) => {
-  try {
-    localStorage.setItem(CURRENT_USER_KEY, userId);
-  } catch (error) {
-    console.error('Error setting current user:', error);
-  }
+  setCurrentUserInSession(userId);
 };
 
-// Get the current user
-export const getCurrentUser = () => {
+// Get the current user - now from Supabase
+export const getCurrentUser = async () => {
   try {
-    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
-    if (!currentUserId) return null;
-    
-    const users = getAllUsers();
-    return users.find(user => user.id === currentUserId) || null;
+    const user = await getCurrentUserFromSupabase();
+    return user;
   } catch (error) {
     console.error('Error getting current user:', error);
-    return null;
+    // Fallback to localStorage
+    try {
+      const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+      if (!currentUserId) return null;
+      
+      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+      return users.find(user => user.id === currentUserId) || null;
+    } catch (localError) {
+      console.error('Error getting current user from localStorage:', localError);
+      return null;
+    }
   }
 };
 
 // Get user-specific storage key (for game state)
-export const getUserStorageKey = (baseKey) => {
-  const currentUser = getCurrentUser();
+export const getUserStorageKey = async (baseKey) => {
+  const currentUser = await getCurrentUser();
   if (!currentUser) return baseKey;
   return `${baseKey}_${currentUser.id}`;
 };
 
 // Clear current user (for logout)
 export const clearCurrentUser = () => {
+  clearCurrentUserSession();
+};
+
+// Delete a user profile - now from Supabase
+export const deleteUser = async (userId) => {
   try {
-    localStorage.removeItem(CURRENT_USER_KEY);
+    const success = await deleteUserFromSupabase(userId);
+    
+    // Also remove from localStorage
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const filteredUsers = users.filter(user => user.id !== userId);
+    localStorage.setItem(USERS_KEY, JSON.stringify(filteredUsers));
+    
+    return success;
   } catch (error) {
-    console.error('Error clearing current user:', error);
+    console.error('Error deleting user:', error);
+    // Fallback to localStorage only
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const filteredUsers = users.filter(user => user.id !== userId);
+    localStorage.setItem(USERS_KEY, JSON.stringify(filteredUsers));
+    
+    // If the deleted user was the current user, clear the current user
+    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+    if (currentUserId === userId) {
+      clearCurrentUser();
+    }
+    
+    return true;
   }
 };
 
-// Delete a user profile
-export const deleteUser = (userId) => {
-  const users = getAllUsers();
-  const filteredUsers = users.filter(user => user.id !== userId);
-  saveAllUsers(filteredUsers);
-  
-  // If the deleted user was the current user, clear the current user
-  const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
-  if (currentUserId === userId) {
-    clearCurrentUser();
-  }
-};
-
-// Update user profile
-export const updateUser = (userId, updates) => {
-  const users = getAllUsers();
-  const userIndex = users.findIndex(user => user.id === userId);
-  
-  if (userIndex >= 0) {
-    users[userIndex] = { ...users[userIndex], ...updates };
-    saveAllUsers(users);
+// Update user profile - now in Supabase
+export const updateUser = async (userId, updates) => {
+  try {
+    const updatedUser = await updateUserInSupabase(userId, updates);
+    
+    // Also update in localStorage
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const userIndex = users.findIndex(user => user.id === userId);
+    
+    if (userIndex >= 0) {
+      users[userIndex] = { ...users[userIndex], ...updates };
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    }
+    
+    return updatedUser;
+  } catch (error) {
+    console.error('Error updating user:', error);
+    // Fallback to localStorage only
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    const userIndex = users.findIndex(user => user.id === userId);
+    
+    if (userIndex >= 0) {
+      users[userIndex] = { ...users[userIndex], ...updates };
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      return users[userIndex];
+    }
+    
+    return null;
   }
 };
 
@@ -121,9 +229,11 @@ export const user = {
   name: 'Demo User',
   email: 'demo@example.com',
   organization: 'Demo Organization',
-  avatar: 'D'
+  avatar: 'D',
+  country: 'Kenya'
 };
 
-export const getCurrentUserData = () => {
-  return getCurrentUser() || user;
+export const getCurrentUserData = async () => {
+  const currentUser = await getCurrentUser();
+  return currentUser || user;
 };

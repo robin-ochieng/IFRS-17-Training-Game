@@ -1,5 +1,5 @@
+//src/IFRS17TrainingGame.js
 // IFRS 17 Training Game Component
-
 
 import React, { useState, useEffect } from 'react';
 import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from 'lucide-react';
@@ -8,7 +8,7 @@ import { achievementsList, getNewAchievements, createAchievementStats } from './
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
 import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
 import { getCurrentUser, saveUser } from './modules/userProfile';
-import { submitToLeaderboard, getLeaderboard } from './modules/supabaseLeaderboard';
+import { submitToLeaderboard, getLeaderboard, submitModuleScore,  getModuleLeaderboard, getUserModuleRank} from './modules/supabaseLeaderboard';
 
 // Add onLogout as a prop and remove the problematic import
 const IFRS17TrainingGame = ({ onLogout }) => {
@@ -39,23 +39,52 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
+  const [leaderboardView, setLeaderboardView] = useState('overall'); // 'overall' or module index
+  const [moduleStartTime, setModuleStartTime] = useState(null);
    
   // Load current user on component mount
+  // Load current user on component mount
   useEffect(() => {
-    const user = getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    } else {
-      // Fallback user if no user is found
-      setCurrentUser({
-        id: 'default-user',
-        name: 'Demo User',
-        email: 'demo@example.com',
-        organization: 'Demo Organization',
-        avatar: 'D'
-      });
-    }
+    const loadUser = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (user) {
+          setCurrentUser(user);
+        } else {
+          // Fallback user if no user is found
+          setCurrentUser({
+            id: 'default-user',
+            name: 'Demo User',
+            email: 'demo@example.com',
+            organization: 'Demo Organization',
+            avatar: 'D',
+            country: 'Kenya' 
+          });
+        }
+      } catch (error) {
+        console.error('Error loading user:', error);
+        // Use fallback user on error
+        setCurrentUser({
+          id: 'default-user',
+          name: 'Demo User',
+          email: 'demo@example.com',
+          organization: 'Demo Organization',
+          avatar: 'D',
+          country: 'Kenya' 
+        });
+      }
+    };
+    
+    loadUser();
   }, []);
+
+  // Helper function to format time
+  const formatTime = (seconds) => {
+    if (!seconds) return 'N/A';
+    const minutes = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${minutes}:${secs.toString().padStart(2, '0')}`;
+  };
 
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
@@ -91,7 +120,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         setLevel(level + 1);
         setXp((xp + 25) % (level * 100));
         setShowLevelUp(true);
-        setTimeout(() => setShowLevelUp(false), 5000);
+        setTimeout(() => setShowLevelUp(false), 7000);
       }
     } else {
       setStreak(0);
@@ -99,7 +128,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setPerfectModule(false);
     }
 
-    setTimeout(() => {
+    setTimeout(async () => {
       if (currentQuestion < modules[currentModule].questions.length - 1) {
         setCurrentQuestion(currentQuestion + 1);
         setShowFeedback(false);
@@ -119,6 +148,22 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         setCompletedModules([...completedModules, currentModule]);
         saveProgress();
 
+        const endTime = new Date();
+        const timeTaken = moduleStartTime ? Math.floor((endTime - moduleStartTime) / 1000) : null;
+        await submitModuleScore({
+          userId: currentUser.id,
+          moduleId: currentModule,
+          moduleName: modules[currentModule].title,
+          userName: currentUser.name,
+          userEmail: currentUser.email,
+          organization: currentUser.organization,
+          avatar: currentUser.avatar,
+          country: currentUser.country || 'Unknown',
+          score: moduleScore,
+          perfectCompletion: perfectModule,
+          completionTime: timeTaken // in seconds
+        });        
+
         // Submit to leaderboard if all modules completed
         if (completedModules.length === modules.length - 1) {
           submitUserScore();
@@ -128,7 +173,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           setUnlockedModules([...unlockedModules, currentModule + 1]);
         }
       }
-    }, 5000);
+    }, 7000);
   };
 
   const handlePowerUp = (type) => {
@@ -175,7 +220,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       const firstNewAchievement = newAchievements[0];
       setAchievements(prev => [...prev, firstNewAchievement]);
       setShowAchievement(firstNewAchievement);
-      setTimeout(() => setShowAchievement(null), 5000);
+      setTimeout(() => setShowAchievement(null), 7000);
     }
   };
 
@@ -197,6 +242,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setPowerUps(prev => refreshPowerUps(prev));
     setShowFeedback(false);
     setSelectedAnswer(null);
+    setModuleStartTime(new Date());
   };
 
   const submitUserScore = async () => {
@@ -206,6 +252,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       email: currentUser.email,
       organization: currentUser.organization,
       avatar: currentUser.avatar,
+      country: currentUser.country || 'Unknown',
       score: score,
       level: level,
       achievements: achievements.length,
@@ -220,13 +267,20 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   };
 
-  const loadLeaderboardData = async () => {
+  const loadLeaderboardData = async (view = 'overall') => {
     setIsLoadingLeaderboard(true);
     
     try {
-      // Fetch leaderboard from Supabase
-      const leaderboard = await getLeaderboard();
-      
+      let leaderboard;
+
+      if (view === 'overall') {
+        // Fetch overall leaderboard from Supabase
+        leaderboard = await getLeaderboard();
+      } else {
+        // Fetch module-specific leaderboard
+        leaderboard = await getModuleLeaderboard(view);
+      }      
+
       // Add rank and mark current user
       const rankedLeaderboard = leaderboard.map((user, index) => ({
         ...user,
@@ -238,6 +292,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       }));
       
       setLeaderboardData(rankedLeaderboard);
+      setLeaderboardView(view);
     } catch (error) {
       console.error('Failed to load leaderboard:', error);
     } finally {
@@ -268,7 +323,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       powerUps,
       streak,
       combo,
-      perfectModulesCount
+      perfectModulesCount,
+      moduleStartTime: currentModule !== null ? new Date().toISOString() : null 
     });
     
     if (!success) {
@@ -300,6 +356,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setPerfectModulesCount(0);
       setShowLevelUp(false);
       setShowAchievement(null);
+      setModuleStartTime(null);
     }
   };
 
@@ -318,7 +375,12 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setStreak(savedState.streak || 0);
       setCombo(savedState.combo || 0);
       setPerfectModulesCount(savedState.perfectModulesCount || 0);
-      
+
+      // If we're in the middle of a module, set the start time
+      if (savedState.currentModule !== null && !savedState.completedModules?.includes(savedState.currentModule)) {
+        setModuleStartTime(new Date());
+      }
+      // Restore achievements      
       const restoredAchievements = achievementsList.filter(a => 
         savedState.achievements?.includes(a.id)
       );
@@ -417,7 +479,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           <div className="mt-4 text-center">
             <button
               onClick={() => {
-                loadLeaderboardData();
+                loadLeaderboardData('overall');
                 setShowLeaderboard(true);
               }}
             className="group relative bg-black/30 backdrop-blur-sm border border-purple-400/30 hover:border-purple-400 text-white px-4 py-2 md:px-6 md:py-2 rounded-full font-medium transition-all transform hover:scale-105 inline-flex items-center gap-2 text-sm md:text-base"
@@ -695,16 +757,18 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
           </div>
         )}
-        {/* Leaderboard Modal - ADD THIS ENTIRE SECTION */}
+        {/* Leaderboard Modal */}
         {showLeaderboard && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-blue-900 rounded-2xl max-w-4xl w-full max-h-[85vh] overflow-hidden border border-white/10">
+            <div className="bg-gradient-to-br from-gray-900 to-blue-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden border border-white/10">
               <div className="p-6 md:p-8">
                 {/* Header */}
                 <div className="flex justify-between items-center mb-6">
                   <div className="flex items-center gap-3">
                     <Trophy className="w-8 h-8 text-yellow-400" />
-                    <h2 className="text-2xl md:text-3xl font-bold text-white">Global Leaderboard</h2>
+                    <h2 className="text-2xl md:text-3xl font-bold text-white">
+                      {leaderboardView === 'overall' ? 'Grand Leaderboard' : `${modules[leaderboardView]?.title} Leaderboard`}
+                    </h2>
                   </div>
                   <button
                     onClick={() => setShowLeaderboard(false)}
@@ -714,6 +778,37 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   </button>
                 </div>
 
+                {/* Leaderboard Tabs */}
+                <div className="mb-6 overflow-x-auto">
+                  <div className="flex gap-2 min-w-max pb-2">
+                    <button
+                      onClick={() => loadLeaderboardData('overall')}
+                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                        leaderboardView === 'overall'
+                          ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                      }`}
+                    >
+                      🏆 Grand Total
+                    </button>
+                    <div className="w-px bg-white/20 mx-2"></div>
+                    {modules.map((module, index) => (
+                      <button
+                        key={index}
+                        onClick={() => loadLeaderboardData(index)}
+                        className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${
+                          leaderboardView === index
+                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+                            : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        }`}
+                      >
+                        <span className="text-lg">{module.icon}</span>
+                        <span className="hidden md:inline">{module.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Loading State */}
                 {isLoadingLeaderboard ? (
                   <div className="flex items-center justify-center h-64">
@@ -721,7 +816,11 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   </div>
                 ) : leaderboardData.length === 0 ? (
                   <div className="text-center py-8">
-                    <p className="text-gray-400">No scores yet. Be the first to complete the training!</p>
+                    <p className="text-gray-400">
+                      {leaderboardView === 'overall' 
+                        ? 'No scores yet. Be the first to complete the training!'
+                        : 'No one has completed this module yet. Be the first!'}
+                    </p>
                   </div>
                 ) : (
                   <>
@@ -736,13 +835,22 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                             </span>
                             <span className="text-white font-semibold">{currentUser.name}</span>
                           </div>
-                          <span className="text-yellow-400 font-bold">{score.toLocaleString()} points</span>
+                          <div className="text-right">
+                            <span className="text-yellow-400 font-bold">
+                              {leaderboardView === 'overall' 
+                                ? score.toLocaleString() 
+                                : (leaderboardData.find(user => user.isCurrentUser)?.score || 0).toLocaleString()} points
+                            </span>
+                            {leaderboardView !== 'overall' && leaderboardData.find(user => user.isCurrentUser)?.perfect_completion && (
+                              <p className="text-xs text-green-400 mt-1">⭐ Perfect Score</p>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
 
                     {/* Leaderboard Table */}
-                    <div className="overflow-y-auto max-h-[50vh]">
+                    <div className="overflow-y-auto max-h-[45vh]">
                       <div className="space-y-2">
                         {leaderboardData.map((user, index) => (
                           <div
@@ -765,39 +873,57 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                                   {user.rank <= 3 ? '🏆' : user.rank}
                                 </div>
                                 
-                                {/* User Info */}
-                                <div className="flex items-center gap-3">
-                                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                                    user.isCurrentUser ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'
-                                  }`}>
-                                    {user.avatar}
-                                  </div>
-                                  <div>
-                                    <p className="text-white font-semibold flex items-center gap-2">
-                                      {user.name}
-                                      {user.isCurrentUser && <span className="text-xs bg-purple-600 px-2 py-1 rounded-full">You</span>}
-                                    </p>
-                                    <p className="text-gray-400 text-sm">{user.organization}</p>
+                              {/* User Info */}
+                              <div className="flex items-center gap-3">
+                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
+                                  user.isCurrentUser ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'
+                                }`}>
+                                  {user.avatar}
+                                </div>
+                                <div>
+                                  <p className="text-white font-semibold flex items-center gap-2">
+                                    {user.name}
+                                    {user.isCurrentUser && <span className="text-xs bg-purple-600 px-2 py-1 rounded-full">You</span>}
+                                    {leaderboardView !== 'overall' && user.perfect_completion && (
+                                      <span className="text-xs bg-green-600 px-2 py-1 rounded-full">Perfect</span>
+                                    )}
+                                  </p>
+                                  <div className="flex items-center gap-3 text-sm">
+                                    <p className="text-gray-400">{user.organization}</p>
+                                    {user.country && (
+                                      <>
+                                        <span className="text-gray-600">•</span>
+                                        <p className="text-gray-400">🌍 {user.country}</p>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
-                              </div>
-                              
+                               </div> 
+                              </div>                              
                               {/* Stats */}
                               <div className="flex items-center gap-6">
                                 <div className="text-right">
                                   <p className="text-yellow-400 font-bold text-lg">{user.score.toLocaleString()}</p>
                                   <p className="text-gray-400 text-xs">points</p>
                                 </div>
-                                <div className="hidden md:flex items-center gap-4">
+                                {leaderboardView !== 'overall' && user.completion_time && (
                                   <div className="text-center">
-                                    <p className="text-purple-400 font-semibold">{user.level}</p>
-                                    <p className="text-gray-500 text-xs">Level</p>
+                                    <p className="text-cyan-400 font-semibold">{formatTime(user.completion_time)}</p>
+                                    <p className="text-gray-500 text-xs">Time</p>
                                   </div>
-                                  <div className="text-center">
-                                    <p className="text-green-400 font-semibold">{user.achievements}</p>
-                                    <p className="text-gray-500 text-xs">Awards</p>
+                                )}
+                                {leaderboardView === 'overall' && (
+                                  <div className="hidden md:flex items-center gap-4">
+                                    <div className="text-center">
+                                      <p className="text-purple-400 font-semibold">{user.level}</p>
+                                      <p className="text-gray-500 text-xs">Level</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-green-400 font-semibold">{user.achievements}</p>
+                                      <p className="text-gray-500 text-xs">Awards</p>
+                                    </div>
                                   </div>
-                                </div>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -814,17 +940,26 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                       <div className="bg-white/5 rounded-lg p-4 text-center">
                         <p className="text-gray-400 text-sm mb-1">Your Percentile</p>
                         <p className="text-2xl font-bold text-purple-400">
-                          Top {Math.round((leaderboardData.find(u => u.isCurrentUser)?.rank / leaderboardData.length) * 100)}%
+                          {leaderboardData.find(u => u.isCurrentUser) 
+                            ? `Top ${Math.round((leaderboardData.find(u => u.isCurrentUser)?.rank / leaderboardData.length) * 100)}%`
+                            : 'N/A'}
                         </p>
                       </div>
                       <div className="bg-white/5 rounded-lg p-4 text-center">
-                        <p className="text-gray-400 text-sm mb-1">Points to Next</p>
+                        <p className="text-gray-400 text-sm mb-1">
+                          {leaderboardView === 'overall' ? 'Points to Next' : 'Module Leader'}
+                        </p>
                         <p className="text-2xl font-bold text-yellow-400">
                           {(() => {
-                            const currentRank = leaderboardData.find(u => u.isCurrentUser)?.rank;
-                            if (currentRank === 1) return '👑';
-                            const nextUser = leaderboardData[currentRank - 2];
-                            return nextUser ? `+${(nextUser.score - score).toLocaleString()}` : '-';
+                            if (leaderboardView === 'overall') {
+                              const currentRank = leaderboardData.find(u => u.isCurrentUser)?.rank;
+                              if (!currentRank) return 'N/A';
+                              if (currentRank === 1) return '👑';
+                              const nextUser = leaderboardData[currentRank - 2];
+                              return nextUser ? `+${(nextUser.score - score).toLocaleString()}` : '-';
+                            } else {
+                              return leaderboardData[0]?.name || '-';
+                            }
                           })()}
                         </p>
                       </div>
