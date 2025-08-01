@@ -4,11 +4,11 @@
 import React, { useState, useEffect } from 'react';
 import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from 'lucide-react';
 import { modules } from './data/IFRS17Modules';
-import { achievementsList, getNewAchievements, createAchievementStats } from './modules/achievements';
+import { achievementsList, getNewAchievements, createAchievementStats, getGenderBasedAchievementName, getGenderBasedAchievementIcon } from './modules/achievements';
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
-import { saveGameState, loadGameState, hasSavedGame, clearGameState } from './modules/storageService';
+import { saveGameState, loadGameState, clearGameState } from './modules/storageService';
 import { getCurrentUser } from './modules/userProfile';
-import { submitToLeaderboard, getLeaderboard, submitModuleScore,  getModuleLeaderboard, getUserModuleRank} from './modules/supabaseLeaderboard';
+import { submitToLeaderboard, getLeaderboard, submitModuleScore, getModuleLeaderboard } from './modules/supabaseLeaderboard';
 
 // Add onLogout as a prop and remove the problematic import
 const IFRS17TrainingGame = ({ onLogout }) => {
@@ -34,14 +34,37 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [perfectModulesCount, setPerfectModulesCount] = useState(0);
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showAchievement, setShowAchievement] = useState(null);
-  const [moduleScores, setModuleScores] = useState({});
-  const [showCertificate, setShowCertificate] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
   const [leaderboardView, setLeaderboardView] = useState('overall'); // 'overall' or module index
   const [moduleStartTime, setModuleStartTime] = useState(null);
   const [completedModuleScore, setCompletedModuleScore] = useState(0);
+  const [shuffledQuestions, setShuffledQuestions] = useState({});
+  
+  // Fisher-Yates shuffle algorithm to randomize array
+  const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
+  // Get shuffled questions for a module, or create if doesn't exist
+  const getShuffledQuestions = (moduleIndex) => {
+    if (!shuffledQuestions[moduleIndex]) {
+      const originalQuestions = modules[moduleIndex].questions;
+      const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ ...q, originalIndex: index })));
+      setShuffledQuestions(prev => ({
+        ...prev,
+        [moduleIndex]: shuffled
+      }));
+      return shuffled;
+    }
+    return shuffledQuestions[moduleIndex];
+  };
   
   // Load current user on component mount
   // Load current user on component mount
@@ -87,12 +110,27 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Helper function to get achievement display data with gender consideration
+  const getAchievementDisplayData = (achievement) => {
+    const originalAchievement = achievementsList.find(a => a.id === achievement.id);
+    if (originalAchievement?.genderBased && currentUser?.gender) {
+      return {
+        ...achievement,
+        name: getGenderBasedAchievementName(originalAchievement, currentUser.gender),
+        icon: getGenderBasedAchievementIcon(originalAchievement, currentUser.gender)
+      };
+    }
+    return achievement;
+  };
+
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
     if (answeredQuestions[questionKey]?.answered) return;
     
     setSelectedAnswer(answerIndex);
-    const correct = answerIndex === modules[currentModule].questions[currentQuestion].correct;
+    const currentModuleQuestions = getShuffledQuestions(currentModule);
+    const currentQuestionData = currentModuleQuestions[currentQuestion];
+    const correct = answerIndex === currentQuestionData.correct;
     setIsCorrect(correct);
     setShowFeedback(true);
     
@@ -130,7 +168,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
 
     setTimeout(async () => {
-        if (currentQuestion < modules[currentModule].questions.length - 1) {
+        if (currentQuestion < currentModuleQuestions.length - 1) {
           setCurrentQuestion(currentQuestion + 1);
           setShowFeedback(false);
           setSelectedAnswer(null);
@@ -142,13 +180,6 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         if (perfectModule) {
           setPerfectModulesCount(prev => prev + 1);
         }        
-
-        // Save module score
-        setModuleScores(prev => ({
-          ...prev,
-          [currentModule]: moduleScore
-        }));       
-
 
         // Submit to Supabase BEFORE showing completion modal
         const endTime = new Date();
@@ -222,7 +253,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       combo
     });
     
-    const newAchievements = getNewAchievements(achievements, stats);
+    const newAchievements = getNewAchievements(achievements, stats, currentUser?.gender);
     
     if (newAchievements.length > 0) {
       const firstNewAchievement = newAchievements[0];
@@ -241,6 +272,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     for (let i = 0; i < moduleQuestionCount; i++) {
       delete updatedAnsweredQuestions[`${moduleIndex}-${i}`];
     }
+    
+    // Generate new shuffled questions for this module attempt
+    const originalQuestions = modules[moduleIndex].questions;
+    const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ ...q, originalIndex: index })));
+    setShuffledQuestions(prev => ({
+      ...prev,
+      [moduleIndex]: shuffled
+    }));
     
     setAnsweredQuestions(updatedAnsweredQuestions);
     setCurrentModule(moduleIndex);
@@ -308,6 +347,25 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   };  
 
+  // Update achievements with gender-based names when currentUser is loaded
+  useEffect(() => {
+    if (currentUser?.gender && achievements.length > 0) {
+      setAchievements(prevAchievements => 
+        prevAchievements.map(achievement => {
+          const originalAchievement = achievementsList.find(a => a.id === achievement.id);
+          if (originalAchievement?.genderBased) {
+            return {
+              ...achievement,
+              name: getGenderBasedAchievementName(originalAchievement, currentUser.gender),
+              icon: getGenderBasedAchievementIcon(originalAchievement, currentUser.gender)
+            };
+          }
+          return achievement;
+        })
+      );
+    }
+  }, [currentUser?.gender, achievements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
     checkAchievementConditions();
   }, [score, streak, level, combo, completedModules]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -366,6 +424,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setShowLevelUp(false);
       setShowAchievement(null);
       setModuleStartTime(null);
+      setShuffledQuestions({});
     }
   };
 
@@ -389,7 +448,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       if (savedState.currentModule !== null && !savedState.completedModules?.includes(savedState.currentModule)) {
         setModuleStartTime(new Date());
       }
-      // Restore achievements      
+      // Restore achievements (will be updated with gender-based names in separate useEffect)     
       const restoredAchievements = achievementsList.filter(a => 
         savedState.achievements?.includes(a.id)
       );
@@ -580,7 +639,6 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               <p className="text-2xl text-white mb-2">{modules[currentModule].title}</p>
               <p className="text-xl text-yellow-300 mb-4">
                 Score: {completedModuleScore} points
-                {/* Use moduleScores[currentModule] as primary source, fall back to moduleScore */}
               </p>
               {perfectModule && (
                 <p className="text-2xl text-yellow-400 font-bold mb-4 animate-pulse">
@@ -624,7 +682,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             <div className="mb-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <h3 className="text-lg md:text-xl font-bold text-white">
-                  {modules[currentModule].title} - Question {currentQuestion + 1}/{modules[currentModule].questions.length}
+                  {modules[currentModule].title} - Question {currentQuestion + 1}/{getShuffledQuestions(currentModule).length}
                 </h3>
                 <div className="flex gap-2">
                   {Object.entries(powerUps).map(([type, count]) => (
@@ -648,12 +706,12 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
                 <div 
                   className="h-full bg-gradient-to-r from-blue-400 to-purple-400 transition-all duration-500"
-                  style={{ width: `${((currentQuestion + 1) / modules[currentModule].questions.length) * 100}%` }}
+                  style={{ width: `${((currentQuestion + 1) / getShuffledQuestions(currentModule).length) * 100}%` }}
                 />
               </div>
               
               <div className="flex gap-1 md:gap-2 justify-center mb-6 flex-wrap">
-                {modules[currentModule].questions.map((_, idx) => (
+                {getShuffledQuestions(currentModule).map((_, idx) => (
                   <div
                     key={idx}
                     className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all ${
@@ -668,7 +726,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               </div>
               
               <p className="text-base md:text-xl text-white mb-6">
-                {modules[currentModule].questions[currentQuestion].question}
+                {getShuffledQuestions(currentModule)[currentQuestion]?.question}
               </p>
               
               {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && !showFeedback && (
@@ -693,7 +751,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {modules[currentModule].questions[currentQuestion].options.map((option, index) => (
+              {getShuffledQuestions(currentModule)[currentQuestion]?.options.map((option, index) => (
                 <button
                   key={index}
                   onClick={() => !showFeedback && !answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && handleAnswer(index)}
@@ -704,14 +762,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                         ? answeredQuestions[`${currentModule}-${currentQuestion}`]?.wasCorrect
                           ? 'bg-green-500/20 border-green-400 text-green-400'
                           : 'bg-red-500/20 border-red-400 text-red-400'
-                        : index === modules[currentModule].questions[currentQuestion].correct
+                        : index === getShuffledQuestions(currentModule)[currentQuestion]?.correct
                         ? 'bg-green-500/20 border-green-400 text-green-400'
                         : 'bg-gray-700/50 border-gray-600 text-gray-400 cursor-not-allowed'
                       : showFeedback && selectedAnswer === index
                       ? isCorrect
                         ? 'bg-green-500/20 border-green-400 text-green-400'
                         : 'bg-red-500/20 border-red-400 text-red-400'
-                      : showFeedback && index === modules[currentModule].questions[currentQuestion].correct
+                      : showFeedback && index === getShuffledQuestions(currentModule)[currentQuestion]?.correct
                       ? 'bg-green-500/20 border-green-400 text-green-400'
                       : 'bg-white/5 border-white/20 text-white hover:bg-white/10 hover:border-white/30'
                   }`}
@@ -726,7 +784,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                         answeredQuestions[`${currentModule}-${currentQuestion}`]?.wasCorrect ? 
                           <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-400" /> : 
                           <XCircle className="w-4 h-4 md:w-5 md:h-5 text-red-400" />
-                      ) : index === modules[currentModule].questions[currentQuestion].correct ? (
+                      ) : index === getShuffledQuestions(currentModule)[currentQuestion]?.correct ? (
                         <CheckCircle className="w-4 h-4 md:w-5 md:h-5 text-green-400" />
                       ) : null
                     )}
@@ -745,7 +803,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   {isCorrect && streak >= 5 && ' ⚡ STREAK!'}
                 </p>
                 <p className="text-gray-300 text-sm md:text-base">
-                  {modules[currentModule].questions[currentQuestion].explanation}
+                  {getShuffledQuestions(currentModule)[currentQuestion]?.explanation}
                 </p>
               </div>
             )}
@@ -766,12 +824,15 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10">
             <h3 className="text-xl font-bold text-white mb-4">Achievements Unlocked</h3>
             <div className="flex flex-wrap gap-3">
-              {achievements.map((achievement) => (
-                <div key={achievement.id} className="bg-white/10 rounded-lg p-3 flex items-center gap-2">
-                  <span className="text-2xl">{achievement.icon}</span>
-                  <span className="text-white font-medium">{achievement.name}</span>
-                </div>
-              ))}
+              {achievements.map((achievement) => {
+                const displayData = getAchievementDisplayData(achievement);
+                return (
+                  <div key={achievement.id} className="bg-white/10 rounded-lg p-3 flex items-center gap-2">
+                    <span className="text-2xl">{displayData.icon}</span>
+                    <span className="text-white font-medium">{displayData.name}</span>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -1002,19 +1063,13 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             <div className="flex flex-col items-center gap-2 md:gap-4">
               {/* Powered By Section */}
               <div className="flex items-center gap-1 md:gap-2">
-                <span className="text-gray-300 text-xs md:text-sm font-light">Powered by</span>
-                <img 
-                  src="/kenbright-logo.png" 
-                  alt="Kenbright" 
-                  className="h-12 md:h-16 w-auto opacity-80 hover:opacity-100 transition-opacity duration-200"
-                />
-                <span className="text-gray-300 text-xs md:text-sm font-light">AI</span>
+                <span className="text-gray-300 text-xs md:text-sm font-light">Powered by Kenbright AI</span>
               </div>
               
               {/* Additional Info */}
               <div className="text-center">
                 <p className="text-gray-300 text-xs">
-                  © {new Date().getFullYear()} Kenbright. All rights reserved.  
+                  © {new Date().getFullYear()} IRA - Kenbright. All rights reserved.  
                 </p>
                 <p className="text-gray-300 text-xs mt-1">
                   Version 1.0.0 | IFRS 17 Training Platform
