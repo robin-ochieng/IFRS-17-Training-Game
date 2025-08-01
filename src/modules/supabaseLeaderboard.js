@@ -40,14 +40,14 @@ export const submitToLeaderboard = async (userData) => {
 
     if (error) {
       console.error('Error submitting to leaderboard:', error);
-      return false;
+      return { success: false, error: error.message };
     }
 
     console.log('Successfully submitted to leaderboard:', data);
-    return true;
+    return { success: true, data };
   } catch (error) {
     console.error('Failed to submit to leaderboard:', error);
-    return false;
+    return { success: false, error: error.message };
   }
 };
 
