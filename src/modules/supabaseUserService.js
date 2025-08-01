@@ -2,18 +2,14 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.error('Missing Supabase environment variables');
-}
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Storage key for current user (keeping this in localStorage for session management)
+// Storage key constants
 const CURRENT_USER_KEY = 'ifrs17_current_user';
-const MIGRATION_KEY = 'ifrs17_users_migrated';
+const USERS_KEY = 'ifrs17_users';
 
 // Get all users from Supabase
 export const getAllUsersFromSupabase = async () => {
@@ -24,68 +20,75 @@ export const getAllUsersFromSupabase = async () => {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error('Error fetching users from Supabase:', error);
+      console.error('Error fetching users:', error);
       return [];
     }
 
     return data || [];
   } catch (error) {
-    console.error('Failed to fetch users:', error);
+    console.error('Error in getAllUsersFromSupabase:', error);
     return [];
   }
 };
 
-// Create a new user in Supabase
-export const createUserInSupabase = async (name, email = '', organization = '', country = '') => {
-  const avatar = name.charAt(0).toUpperCase();
-  const newUser = {
-    id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    name,
-    email,
-    organization,
-    avatar,
-    country,
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString()
-  };
-
+// Create a new user in Supabase - Updated to include gender
+export const createUserInSupabase = async (name, email, organization, country, gender = 'Prefer not to say') => {
   try {
+    const avatar = name.charAt(0).toUpperCase();
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
     const { data, error } = await supabase
       .from('users')
-      .insert([newUser])
+      .insert([{
+        id: userId,
+        name,
+        email,
+        organization: organization || 'Independent',
+        country: country || 'Unknown',
+        gender: gender || 'Prefer not to say',
+        avatar,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating user in Supabase:', error);
+      console.error('Error creating user:', error);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.error('Failed to create user:', error);
+    console.error('Error in createUserInSupabase:', error);
     return null;
   }
 };
 
-// Update user in Supabase
+// Update user in Supabase - Updated to handle all fields including gender
 export const updateUserInSupabase = async (userId, updates) => {
   try {
+    // Ensure we don't accidentally update password_hash through this method
+    const { password_hash, ...safeUpdates } = updates;
+    
     const { data, error } = await supabase
       .from('users')
-      .update({ ...updates, updated_at: new Date().toISOString() })
+      .update({
+        ...safeUpdates,
+        updated_at: new Date().toISOString()
+      })
       .eq('id', userId)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating user in Supabase:', error);
+      console.error('Error updating user:', error);
       return null;
     }
 
     return data;
   } catch (error) {
-    console.error('Failed to update user:', error);
+    console.error('Error in updateUserInSupabase:', error);
     return null;
   }
 };
@@ -99,24 +102,24 @@ export const deleteUserFromSupabase = async (userId) => {
       .eq('id', userId);
 
     if (error) {
-      console.error('Error deleting user from Supabase:', error);
+      console.error('Error deleting user:', error);
       return false;
     }
 
-    // Clear current user if it's the deleted user
-    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
-    if (currentUserId === userId) {
-      localStorage.removeItem(CURRENT_USER_KEY);
-    }
+    // Also delete from sessions if exists
+    await supabase
+      .from('current_sessions')
+      .delete()
+      .eq('user_id', userId);
 
     return true;
   } catch (error) {
-    console.error('Failed to delete user:', error);
+    console.error('Error in deleteUserFromSupabase:', error);
     return false;
   }
 };
 
-// Get current user from Supabase
+// Get current user from session
 export const getCurrentUserFromSupabase = async () => {
   try {
     const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
@@ -128,27 +131,33 @@ export const getCurrentUserFromSupabase = async () => {
       .eq('id', currentUserId)
       .single();
 
-    if (error) {
+    if (error || !data) {
       console.error('Error fetching current user:', error);
       return null;
     }
 
-    // Update last login
-    if (data) {
-      await updateUserInSupabase(data.id, { last_login: new Date().toISOString() });
-    }
-
     return data;
   } catch (error) {
-    console.error('Failed to get current user:', error);
+    console.error('Error in getCurrentUserFromSupabase:', error);
     return null;
   }
 };
 
-// Set current user (still using localStorage for session)
+// Set current user in session
 export const setCurrentUserInSession = (userId) => {
   try {
     localStorage.setItem(CURRENT_USER_KEY, userId);
+    
+    // Update last activity in Supabase
+    supabase
+      .from('current_sessions')
+      .upsert({
+        user_id: userId,
+        last_activity: new Date().toISOString()
+      })
+      .then(({ error }) => {
+        if (error) console.error('Error updating session:', error);
+      });
   } catch (error) {
     console.error('Error setting current user:', error);
   }
@@ -157,6 +166,19 @@ export const setCurrentUserInSession = (userId) => {
 // Clear current user session
 export const clearCurrentUserSession = () => {
   try {
+    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+    
+    if (currentUserId) {
+      // Remove from sessions table
+      supabase
+        .from('current_sessions')
+        .delete()
+        .eq('user_id', currentUserId)
+        .then(({ error }) => {
+          if (error) console.error('Error clearing session:', error);
+        });
+    }
+    
     localStorage.removeItem(CURRENT_USER_KEY);
   } catch (error) {
     console.error('Error clearing current user:', error);
@@ -165,105 +187,53 @@ export const clearCurrentUserSession = () => {
 
 // Migrate users from localStorage to Supabase
 export const migrateUsersToSupabase = async () => {
-  // Check if migration has already been done
-  const migrated = localStorage.getItem(MIGRATION_KEY);
-  if (migrated === 'true') {
-    return { success: true, message: 'Users already migrated' };
-  }
-
   try {
-    // Get users from localStorage
-    const USERS_KEY = 'ifrs17_users';
     const localUsers = localStorage.getItem(USERS_KEY);
-    
-    if (!localUsers) {
-      localStorage.setItem(MIGRATION_KEY, 'true');
-      return { success: true, message: 'No users to migrate' };
-    }
+    if (!localUsers) return;
 
     const users = JSON.parse(localUsers);
-    
-    if (users.length === 0) {
-      localStorage.setItem(MIGRATION_KEY, 'true');
-      return { success: true, message: 'No users to migrate' };
+    if (!Array.isArray(users) || users.length === 0) return;
+
+    // Check which users already exist
+    const { data: existingUsers } = await supabase
+      .from('users')
+      .select('id');
+
+    const existingIds = new Set(existingUsers?.map(u => u.id) || []);
+
+    // Filter out users that already exist
+    const usersToMigrate = users.filter(user => !existingIds.has(user.id));
+
+    if (usersToMigrate.length === 0) return;
+
+    // Prepare users for insertion with all required fields
+    const preparedUsers = usersToMigrate.map(user => ({
+      id: user.id,
+      name: user.name,
+      email: user.email || '',
+      organization: user.organization || 'Independent',
+      country: user.country || 'Unknown',
+      gender: user.gender || 'Prefer not to say',
+      avatar: user.avatar || user.name.charAt(0).toUpperCase(),
+      created_at: user.createdAt || new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }));
+
+    // Insert users in batches
+    const batchSize = 10;
+    for (let i = 0; i < preparedUsers.length; i += batchSize) {
+      const batch = preparedUsers.slice(i, i + batchSize);
+      const { error } = await supabase
+        .from('users')
+        .insert(batch);
+
+      if (error) {
+        console.error('Error migrating batch:', error);
+      }
     }
 
-    // Migrate each user to Supabase
-    const migrationResults = await Promise.all(
-      users.map(async (user) => {
-        try {
-          // Check if user already exists in Supabase
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', user.id)
-            .single();
-
-          if (existingUser) {
-            return { userId: user.id, status: 'already_exists' };
-          }
-
-          // Insert user into Supabase
-          const { data, error } = await supabase
-            .from('users')
-            .insert([{
-              ...user,
-              created_at: user.createdAt || new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }])
-            .select()
-            .single();
-
-          if (error) {
-            console.error(`Error migrating user ${user.id}:`, error);
-            return { userId: user.id, status: 'error', error };
-          }
-
-          return { userId: user.id, status: 'migrated' };
-        } catch (error) {
-          console.error(`Failed to migrate user ${user.id}:`, error);
-          return { userId: user.id, status: 'error', error };
-        }
-      })
-    );
-
-    // Mark migration as complete
-    localStorage.setItem(MIGRATION_KEY, 'true');
-    
-    // Optionally, remove the old localStorage data
-    // localStorage.removeItem(USERS_KEY);
-
-    const migratedCount = migrationResults.filter(r => r.status === 'migrated').length;
-    const existingCount = migrationResults.filter(r => r.status === 'already_exists').length;
-    const errorCount = migrationResults.filter(r => r.status === 'error').length;
-
-    return {
-      success: true,
-      message: `Migration complete: ${migratedCount} migrated, ${existingCount} already existed, ${errorCount} errors`,
-      results: migrationResults
-    };
+    console.log(`Successfully migrated ${preparedUsers.length} users to Supabase`);
   } catch (error) {
-    console.error('Migration failed:', error);
-    return {
-      success: false,
-      message: 'Migration failed',
-      error
-    };
+    console.error('Error during migration:', error);
   }
-};
-
-// Subscribe to user changes (real-time)
-export const subscribeToUserChanges = (callback) => {
-  const subscription = supabase
-    .channel('users-changes')
-    .on('postgres_changes', {
-      event: '*',
-      schema: 'public',
-      table: 'users'
-    }, (payload) => {
-      callback(payload);
-    })
-    .subscribe();
-
-  return subscription;
 };
