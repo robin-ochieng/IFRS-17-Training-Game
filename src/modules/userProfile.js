@@ -9,6 +9,7 @@ import {
   clearCurrentUserSession,
   migrateUsersToSupabase
 } from './supabaseUserService';
+import { getCurrentAuthUser, isAuthenticated } from './authService';
 
 // Storage key constants (for backward compatibility)
 const USERS_KEY = 'ifrs17_users';
@@ -45,10 +46,11 @@ export const getAllUsers = async () => {
   }
 };
 
-// Create a new user profile - now in Supabase
-export const createUserProfile = async (name, email = '', organization = '', country = '') => {
+// Create a new user profile - Updated to include gender
+export const createUserProfile = async (name, email = '', organization = '', country = '', gender = 'Prefer not to say') => {
   try {
-    const newUser = await createUserInSupabase(name, email, organization, country);
+    // Use the new auth service for user creation
+    const newUser = await createUserInSupabase(name, email, organization, country, gender);
     if (newUser) {
       return newUser;
     }
@@ -62,6 +64,7 @@ export const createUserProfile = async (name, email = '', organization = '', cou
       organization,
       avatar,
       country,
+      gender,
       createdAt: new Date().toISOString()
     };
   } catch (error) {
@@ -75,12 +78,13 @@ export const createUserProfile = async (name, email = '', organization = '', cou
       organization,
       avatar,
       country,
+      gender,
       createdAt: new Date().toISOString()
     };
   }
 };
 
-// Save a user - now to Supabase
+// Save a user - Updated to include gender
 export const saveUser = async (user) => {
   try {
     // Try to update first (in case user exists)
@@ -92,7 +96,8 @@ export const saveUser = async (user) => {
         user.name,
         user.email,
         user.organization,
-        user.country
+        user.country,
+        user.gender || 'Prefer not to say'
       );
     }
     
@@ -131,9 +136,18 @@ export const setCurrentUser = (userId) => {
   setCurrentUserInSession(userId);
 };
 
-// Get the current user - now from Supabase
+// Get the current user - Updated to check auth first
 export const getCurrentUser = async () => {
   try {
+    // First check if user is authenticated through the new auth system
+    if (isAuthenticated()) {
+      const authUser = getCurrentAuthUser();
+      if (authUser) {
+        return authUser;
+      }
+    }
+    
+    // Otherwise fall back to the original system
     const user = await getCurrentUserFromSupabase();
     return user;
   } catch (error) {
@@ -192,7 +206,7 @@ export const deleteUser = async (userId) => {
   }
 };
 
-// Update user profile - now in Supabase
+// Update user profile - Updated to include gender
 export const updateUser = async (userId, updates) => {
   try {
     const updatedUser = await updateUserInSupabase(userId, updates);
@@ -223,14 +237,15 @@ export const updateUser = async (userId, updates) => {
   }
 };
 
-// Legacy support - keeping these exports for backward compatibility
+// Legacy support - Updated to include gender
 export const user = {
   id: 'default-user',
   name: 'Demo User',
   email: 'demo@example.com',
   organization: 'Demo Organization',
   avatar: 'D',
-  country: 'Kenya'
+  country: 'Kenya',
+  gender: 'Prefer not to say'
 };
 
 export const getCurrentUserData = async () => {
