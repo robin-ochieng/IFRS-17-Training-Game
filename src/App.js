@@ -1,8 +1,9 @@
 // App.js
 import React, { useState, useEffect } from 'react';
-import UserLogin from './components/UserLogin';
+import AuthScreen from './components/AuthScreen';
 import IFRS17TrainingGame from './IFRS17TrainingGame';
-import { getCurrentUser } from './modules/userProfile';
+import { getCurrentAuthUser, signOut } from './modules/authService';
+import { Loader2 } from 'lucide-react';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
@@ -10,26 +11,38 @@ function App() {
 
   useEffect(() => {
     // Check if there's already a logged-in user
-    const user = getCurrentUser();
-    if (user) {
-      setCurrentUser(user);
-    }
-    setIsLoading(false);
+    checkAuthStatus();
   }, []);
+
+  const checkAuthStatus = async () => {
+    try {
+      const user = getCurrentAuthUser();
+      if (user) {
+        setCurrentUser(user);
+      }
+    } catch (error) {
+      console.error('Error checking auth status:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleLogin = (user) => {
     setCurrentUser(user);
   };
 
   const handleLogout = () => {
+    signOut();
     setCurrentUser(null);
-    // You might want to clear the current user from storage here as well
   };
 
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
-        <div className="text-white text-xl">Loading...</div>
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
+          <p className="text-white text-lg">Loading IFRS 17 Master...</p>
+        </div>
       </div>
     );
   }
@@ -37,9 +50,12 @@ function App() {
   return (
     <div className="App">
       {currentUser ? (
-        <IFRS17TrainingGame onLogout={handleLogout} />
+        <IFRS17TrainingGame 
+          onLogout={handleLogout}
+          currentUser={currentUser}
+        />
       ) : (
-        <UserLogin onLogin={handleLogin} />
+        <AuthScreen onLogin={handleLogin} />
       )}
     </div>
   );
