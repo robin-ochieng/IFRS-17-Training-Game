@@ -6,7 +6,7 @@ import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from
 import { modules } from './data/IFRS17Modules';
 import { achievementsList, getNewAchievements, createAchievementStats, getGenderBasedAchievementName, getGenderBasedAchievementIcon } from './modules/achievements';
 import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
-import { saveGameState, loadGameState, clearGameState } from './modules/storageService';
+import { saveGameState, loadGameState, clearGameState, setStorageUser } from './modules/storageService';
 import { getCurrentUser } from './modules/userProfile';
 import { submitToLeaderboard, getLeaderboard, submitModuleScore, getModuleLeaderboard } from './modules/supabaseLeaderboard';
 
@@ -74,28 +74,34 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         const user = await getCurrentUser();
         if (user) {
           setCurrentUser(user);
+          // Set user-specific storage when user is loaded
+          setStorageUser(user.id);
         } else {
           // Fallback user if no user is found
-          setCurrentUser({
+          const fallbackUser = {
             id: 'default-user',
             name: 'Demo User',
             email: 'demo@example.com',
             organization: 'Demo Organization',
             avatar: 'D',
             country: 'Kenya' 
-          });
+          };
+          setCurrentUser(fallbackUser);
+          setStorageUser(fallbackUser.id);
         }
       } catch (error) {
         console.error('Error loading user:', error);
         // Use fallback user on error
-        setCurrentUser({
+        const fallbackUser = {
           id: 'default-user',
           name: 'Demo User',
           email: 'demo@example.com',
           organization: 'Demo Organization',
           avatar: 'D',
           country: 'Kenya' 
-        });
+        };
+        setCurrentUser(fallbackUser);
+        setStorageUser(fallbackUser.id);
       }
     };
     
@@ -376,8 +382,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   }, [answeredQuestions]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const saveProgress = () => {
-    const success = saveGameState({
+  const saveProgress = async () => {
+    const success = await saveGameState({
       currentModule,
       currentQuestion,
       score,
@@ -390,6 +396,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       streak,
       combo,
       perfectModulesCount,
+      shuffledQuestions,
       moduleStartTime: currentModule !== null ? new Date().toISOString() : null 
     });
     
@@ -398,9 +405,9 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   };
 
-  const resetProgress = () => {
+  const resetProgress = async () => {
     if (window.confirm('⚠️ Are you sure you want to reset all progress?\n\nThis will delete:\n• Your score and level\n• All completed modules\n• All achievements\n• All answered questions\n\nThis action cannot be undone!')) {
-      clearGameState();
+      await clearGameState();
       setCurrentModule(0);
       setCurrentQuestion(0);
       setScore(0);
@@ -430,31 +437,43 @@ const IFRS17TrainingGame = ({ onLogout }) => {
 
   // Load progress on mount
   useEffect(() => {
-    const savedState = loadGameState();
-    if (savedState) {
-      setCurrentModule(savedState.currentModule || 0);
-      setCurrentQuestion(savedState.currentQuestion || 0);
-      setScore(savedState.score || 0);
-      setLevel(savedState.level || 1);
-      setXp(savedState.xp || 0);
-      setCompletedModules(savedState.completedModules || []);
-      setAnsweredQuestions(savedState.answeredQuestions || {});
-      setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
-      setStreak(savedState.streak || 0);
-      setCombo(savedState.combo || 0);
-      setPerfectModulesCount(savedState.perfectModulesCount || 0);
+    const loadProgress = async () => {
+      // Only load progress after currentUser is set and storage user is configured
+      if (!currentUser) return;
+      
+      const savedState = await loadGameState();
+      if (savedState) {
+        setCurrentModule(savedState.currentModule || 0);
+        setCurrentQuestion(savedState.currentQuestion || 0);
+        setScore(savedState.score || 0);
+        setLevel(savedState.level || 1);
+        setXp(savedState.xp || 0);
+        setCompletedModules(savedState.completedModules || []);
+        setAnsweredQuestions(savedState.answeredQuestions || {});
+        setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+        setStreak(savedState.streak || 0);
+        setCombo(savedState.combo || 0);
+        setPerfectModulesCount(savedState.perfectModulesCount || 0);
+        setShuffledQuestions(savedState.shuffledQuestions || {});
 
-      // If we're in the middle of a module, set the start time
-      if (savedState.currentModule !== null && !savedState.completedModules?.includes(savedState.currentModule)) {
-        setModuleStartTime(new Date());
+        // If we're in the middle of a module, set the start time
+        if (savedState.currentModule !== null && !savedState.completedModules?.includes(savedState.currentModule)) {
+          setModuleStartTime(new Date());
+        }
+        // Restore achievements (will be updated with gender-based names in separate useEffect)     
+        const restoredAchievements = achievementsList.filter(a => 
+          savedState.achievements?.includes(a.id)
+        );
+        setAchievements(restoredAchievements);
+        
+        console.log('✅ Game progress loaded successfully');
+      } else {
+        console.log('ℹ️ No saved progress found, starting fresh');
       }
-      // Restore achievements (will be updated with gender-based names in separate useEffect)     
-      const restoredAchievements = achievementsList.filter(a => 
-        savedState.achievements?.includes(a.id)
-      );
-      setAchievements(restoredAchievements);
-    }
-  }, []);
+    };
+    
+    loadProgress();
+  }, [currentUser]); // Depend on currentUser being loaded
 
   const handleLogout = () => {
     if (onLogout) {
