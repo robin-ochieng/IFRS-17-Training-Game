@@ -1,15 +1,23 @@
 // src/modules/storageService.js
 import { getUserStorageKey } from './userProfile';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 let STORAGE_KEY = 'ifrs17-progress';
+let CURRENT_USER_ID = null;
 
 // Add function to set user-specific storage
 export const setStorageUser = (userId) => {
+  CURRENT_USER_ID = userId;
   STORAGE_KEY = getUserStorageKey(userId);
 };
 
-// Save game state to localStorage
-export const saveGameState = (gameState) => {
+// Save game state to both localStorage and Supabase
+export const saveGameState = async (gameState) => {
   try {
     const dataToSave = {
       currentModule: gameState.currentModule,
@@ -24,10 +32,36 @@ export const saveGameState = (gameState) => {
       streak: gameState.streak,
       combo: gameState.combo,
       perfectModulesCount: gameState.perfectModulesCount,
+      shuffledQuestions: gameState.shuffledQuestions || {},
       timestamp: new Date().toISOString()
     };
     
+    // Save to localStorage as backup
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    
+    // Save to Supabase if user is authenticated
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
+      try {
+        const { error } = await supabase
+          .from('user_progress')
+          .upsert({
+            user_id: CURRENT_USER_ID,
+            progress_data: dataToSave,
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id'
+          });
+        
+        if (error) {
+          console.error('Supabase save error:', error);
+        } else {
+          console.log('✅ Progress saved to Supabase successfully');
+        }
+      } catch (supabaseError) {
+        console.error('Failed to save to Supabase:', supabaseError);
+      }
+    }
+    
     return true;
   } catch (error) {
     console.error('Failed to save game state:', error);
@@ -35,13 +69,33 @@ export const saveGameState = (gameState) => {
   }
 };
 
-// Load game state from localStorage
-export const loadGameState = () => {
+// Load game state from Supabase first, fallback to localStorage
+export const loadGameState = async () => {
   try {
+    // First try to load from Supabase if user is authenticated
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
+      try {
+        const { data, error } = await supabase
+          .from('user_progress')
+          .select('progress_data')
+          .eq('user_id', CURRENT_USER_ID)
+          .single();
+        
+        if (data && data.progress_data && !error) {
+          console.log('✅ Progress loaded from Supabase successfully');
+          return data.progress_data;
+        }
+      } catch (supabaseError) {
+        console.error('Failed to load from Supabase:', supabaseError);
+      }
+    }
+    
+    // Fallback to localStorage
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return null;
     
     const gameState = JSON.parse(saved);
+    console.log('📱 Progress loaded from localStorage (fallback)');
     return gameState;
   } catch (error) {
     console.error('Failed to load game state:', error);
@@ -49,10 +103,30 @@ export const loadGameState = () => {
   }
 };
 
-// Clear saved game state
-export const clearGameState = () => {
+// Clear saved game state from both localStorage and Supabase
+export const clearGameState = async () => {
   try {
+    // Clear localStorage
     localStorage.removeItem(STORAGE_KEY);
+    
+    // Clear Supabase if user is authenticated
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
+      try {
+        const { error } = await supabase
+          .from('user_progress')
+          .delete()
+          .eq('user_id', CURRENT_USER_ID);
+        
+        if (error) {
+          console.error('Supabase clear error:', error);
+        } else {
+          console.log('✅ Progress cleared from Supabase successfully');
+        }
+      } catch (supabaseError) {
+        console.error('Failed to clear from Supabase:', supabaseError);
+      }
+    }
+    
     return true;
   } catch (error) {
     console.error('Failed to clear game state:', error);
