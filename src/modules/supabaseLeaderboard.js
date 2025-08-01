@@ -13,80 +13,77 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// Submit or update user score
+// Add these updates to your existing supabaseLeaderboard.js file
+
+// Update the submitToLeaderboard function to include gender
 export const submitToLeaderboard = async (userData) => {
   try {
+    const submissionData = {
+      user_id: userData.id,
+      user_name: userData.name,
+      user_email: userData.email || '',
+      organization: userData.organization || 'Independent',
+      avatar: userData.avatar || userData.name.charAt(0).toUpperCase(),
+      country: userData.country || 'Unknown',
+      gender: userData.gender || 'Prefer not to say',
+      score: userData.score || 0,
+      level: userData.level || 1,
+      achievements: userData.achievements || 0,
+      modules_completed: userData.modulesCompleted || 0,
+      perfect_modules: userData.perfectModules || 0,
+      completed_at: new Date().toISOString()
+    };
+
     const { data, error } = await supabase
       .from('leaderboard')
-      .upsert({
-        user_id: userData.id,
-        user_name: userData.name,
-        user_email: userData.email || '',
-        organization: userData.organization,
-        avatar: userData.avatar,
-        country: userData.country || 'Unknown',
-        score: userData.score,
-        level: userData.level,
-        achievements: userData.achievements,
-        modules_completed: userData.modulesCompleted || 0,
-        perfect_modules: userData.perfectModules || 0,
-        updated_at: new Date().toISOString()
-      }, {
-        onConflict: 'user_id',
-        ignoreDuplicates: false
-      });
+      .upsert(submissionData);
 
     if (error) {
       console.error('Error submitting to leaderboard:', error);
-      return { success: false, error };
+      return false;
     }
 
-    return { success: true, data };
+    console.log('Successfully submitted to leaderboard:', data);
+    return true;
   } catch (error) {
-    console.error('Failed to submit score:', error);
-    return { success: false, error };
+    console.error('Failed to submit to leaderboard:', error);
+    return false;
   }
 };
 
-// Submit or update module-specific score
-export const submitModuleScore = async (moduleData) => {
-  console.log('submitModuleScore called with:', moduleData);
-  
+// Update the submitModuleScore function to include gender
+export const submitModuleScore = async (scoreData) => {
   try {
     const submissionData = {
-      user_id: moduleData.userId,
-      module_id: moduleData.moduleId,
-      module_name: moduleData.moduleName,
-      user_name: moduleData.userName,
-      user_email: moduleData.userEmail || '',
-      organization: moduleData.organization,
-      avatar: moduleData.avatar,
-      country: moduleData.country || 'Unknown',
-      score: moduleData.score,
-      perfect_completion: moduleData.perfectCompletion || false,
-      completion_time: moduleData.completionTime || null,
-      updated_at: new Date().toISOString()
+      user_id: scoreData.userId,
+      module_id: scoreData.moduleId,
+      module_name: scoreData.moduleName,
+      user_name: scoreData.userName,
+      user_email: scoreData.userEmail || '',
+      organization: scoreData.organization || 'Independent',
+      avatar: scoreData.avatar || scoreData.userName.charAt(0).toUpperCase(),
+      country: scoreData.country || 'Unknown',
+      gender: scoreData.gender || 'Prefer not to say',
+      score: scoreData.score,
+      perfect_completion: scoreData.perfectCompletion || false,
+      completion_time: scoreData.completionTime || null,
+      completed_at: new Date().toISOString()
     };
-    
-    console.log('Submitting to Supabase:', submissionData);
-    
+
     const { data, error } = await supabase
       .from('module_leaderboard')
-      .upsert(submissionData, {
-        onConflict: 'user_id,module_id',
-        ignoreDuplicates: false
-      });
+      .upsert(submissionData);
 
     if (error) {
-      console.error('Supabase error submitting module score:', error);
-      return { success: false, error };
+      console.error('Error submitting module score:', error);
+      return false;
     }
 
-    console.log('Module score submitted successfully:', data);
-    return { success: true, data };
+    console.log('Successfully submitted module score:', data);
+    return true;
   } catch (error) {
     console.error('Failed to submit module score:', error);
-    return { success: false, error };
+    return false;
   }
 };
 
