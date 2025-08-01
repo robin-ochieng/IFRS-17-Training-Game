@@ -977,7 +977,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                     )}
 
                     {/* Leaderboard Table */}
-                    <div className="overflow-y-auto max-h-[45vh]">
+                    <div className="leaderboard-scroll overflow-y-auto max-h-[45vh] pr-2">
                       <div className="space-y-2">
                         {leaderboardData.map((user, index) => (
                           <div
@@ -1032,6 +1032,10 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                                 <div className="text-right">
                                   <p className="text-yellow-400 font-bold text-lg">{user.score.toLocaleString()}</p>
                                   <p className="text-gray-400 text-xs">points</p>
+                                </div>
+                                <div className="text-center">
+                                  <p className="text-orange-400 font-semibold">{user.modulesCompleted || 0}</p>
+                                  <p className="text-gray-500 text-xs">Modules</p>
                                 </div>
                                 {leaderboardView !== 'overall' && user.completion_time && (
                                   <div className="text-center">
