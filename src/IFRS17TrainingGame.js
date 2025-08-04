@@ -225,26 +225,16 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     
     setPowerUps(consumePowerUp(powerUps, type));
     
-    switch(type) {
-      case 'hint':
-        console.log('Hint: Look for the most comprehensive answer that aligns with IFRS 17 principles');
-        break;
-      case 'eliminate':
-        console.log('Eliminate: Two incorrect answers have been removed');
-        break;
-      case 'skip':
-        if (currentQuestion < modules[currentModule].questions.length - 1) {
-          const questionKey = `${currentModule}-${currentQuestion}`;
-          setAnsweredQuestions({ 
-            ...answeredQuestions, 
-            [questionKey]: { answered: true, selectedAnswer: null, wasCorrect: false } 
-          });
-          setPerfectModule(false);
-          setCurrentQuestion(currentQuestion + 1);
-        }
-        break;
-      default:
-        break;
+    if (type === 'skip') {
+      if (currentQuestion < modules[currentModule].questions.length - 1) {
+        const questionKey = `${currentModule}-${currentQuestion}`;
+        setAnsweredQuestions({ 
+          ...answeredQuestions, 
+          [questionKey]: { answered: true, selectedAnswer: null, wasCorrect: false } 
+        });
+        setPerfectModule(false);
+        setCurrentQuestion(currentQuestion + 1);
+      }
     }
   };
 
@@ -353,7 +343,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         isCurrentUser: user.user_id === currentUser.id,
         // Map database fields to component fields
         name: user.user_name,
-        id: user.user_id
+        id: user.user_id,
+        modulesCompleted: user.modules_completed || 0
       }));
       
       setLeaderboardData(rankedLeaderboard);
@@ -531,7 +522,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-12 lg:h-16 w-auto z-10"
           />
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
-            IFRS 17 Master: Regulatory Training Game
+            IFRS 17 Quest and Concur: Regulatory Training Game
           </h1>
         </div>
         <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 mb-6 border border-white/10">
@@ -734,19 +725,32 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 </h3>
                 <div className="flex gap-2">
                   {Object.entries(powerUps).map(([type, count]) => (
-                    <button
-                      key={type}
-                      onClick={() => handlePowerUp(type)}
-                      disabled={count === 0}
-                      className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
-                        count > 0 
-                          ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                          : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                      }`}
-                    >
-                    {getPowerUpInfo(type)?.icon}
-                    {count}
-                    </button>
+                    <div key={type} className="relative group">
+                      <button
+                        onClick={() => handlePowerUp(type)}
+                        disabled={count === 0}
+                        className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
+                          count > 0 
+                            ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {getPowerUpInfo(type)?.icon}
+                        {count}
+                      </button>
+                      {/* Tooltip */}
+                      <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block z-50">
+                        <div className="bg-black/90 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs whitespace-nowrap border border-white/20">
+                          <div className="font-semibold">{getPowerUpInfo(type)?.name}</div>
+                          <div className="text-gray-300 mt-1">{getPowerUpInfo(type)?.description}</div>
+                          <div className="text-xs text-purple-300 mt-1">
+                            {count > 0 ? `${count} remaining` : 'None left'}
+                          </div>
+                          {/* Tooltip arrow */}
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45 border-r border-b border-white/20"></div>
+                        </div>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -1109,6 +1113,34 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             ⚠️ Reset All Progress
           </button>
         </div>
+
+        {/* Endorsed By Section */}
+        <div className="mt-6 mb-4">
+          <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-lg endorsed-section">
+            <div className="flex flex-col items-center justify-center space-y-4">
+              <span className="text-sm text-gray-300 font-medium">Endorsed by</span>
+              
+              {/* Logo Container */}
+              <div className="relative group">
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-blue-400/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500 logo-glow"></div>
+                <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl p-4 transform transition-all duration-300 hover:scale-105 logo-container border border-white/20">
+                  <div className="flex flex-col items-center space-y-2">
+                    <img 
+                      src="/IRA logo.png" 
+                      alt="IRA Logo" 
+                      className="h-10 w-20 object-contain logo-image filter drop-shadow-2xl brightness-110 contrast-125"
+                      onError={(e) => {
+                        e.target.style.display = 'none';
+                        e.target.nextSibling.style.display = 'flex';
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Professional Footer Section */}
         <footer className="mt-6 mb-4">
           <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/10">
@@ -1121,7 +1153,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
               {/* Additional Info */}
               <div className="text-center">
                 <p className="text-gray-300 text-xs">
-                  © {new Date().getFullYear()} IRA - Kenbright. All rights reserved.  
+                  © {new Date().getFullYear()} Kenbright. All rights reserved.  
                 </p>
                 <p className="text-gray-300 text-xs mt-1">
                   Version 1.0.0 | IFRS 17 Training Platform

@@ -23,7 +23,7 @@ const verifyPassword = (password, hash) => {
 };
 
 // Sign up a new user
-export const signUpUser = async ({ email, password, name, organization, country, gender }) => {
+export const signUpUser = async ({ email, password, name, organization, companyType, country, gender }) => {
   try {
     // Check if email already exists
     const { data: existingUser } = await supabase
@@ -50,6 +50,7 @@ export const signUpUser = async ({ email, password, name, organization, country,
         password_hash: passwordHash,
         name,
         organization,
+        company_type: companyType,
         country,
         gender,
         avatar,

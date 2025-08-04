@@ -1,6 +1,6 @@
 // src/components/AuthScreen.js
 import React, { useState } from 'react';
-import { User, Mail, Building2, Globe2, Users, Lock, Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { User, Mail, Building2, Globe2, Users, Lock, Eye, EyeOff, Loader2, ArrowRight, Briefcase } from 'lucide-react';
 import { signUpUser, signInUser } from '../modules/authService';
 
 const countries = [
@@ -46,7 +46,8 @@ const AuthScreen = ({ onLogin }) => {
     password: '',
     name: '',
     organization: '',
-    country: '',
+    companyType: '',
+    country: 'Kenya',
     gender: ''
   });
 
@@ -63,7 +64,7 @@ const AuthScreen = ({ onLogin }) => {
     }
     
     if (isSignUp) {
-      if (!formData.name || !formData.organization || !formData.country || !formData.gender) {
+      if (!formData.name || !formData.organization || !formData.companyType || !formData.country || !formData.gender) {
         setError('All fields are required');
         return false;
       }
@@ -100,6 +101,7 @@ const AuthScreen = ({ onLogin }) => {
           password: formData.password,
           name: formData.name,
           organization: formData.organization,
+          companyType: formData.companyType,
           country: formData.country,
           gender: formData.gender
         });
@@ -125,24 +127,27 @@ const AuthScreen = ({ onLogin }) => {
       password: '',
       name: '',
       organization: '',
-      country: '',
+      companyType: '',
+      country: 'Kenya',
       gender: ''
     });
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-4 relative">
+      {/* Logo in top-left corner */}
+      <div className="absolute top-4 left-4">
+        <img 
+          src="/kenbright-logo.png" 
+          alt="Kenbright Logo" 
+          className="h-16 w-auto"
+        />
+      </div>
+      
       <div className="w-full max-w-md">
-        {/* Logo and Title */}
+        {/* Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center mb-4">
-            <img 
-              src="/kenbright-logo.png" 
-              alt="Kenbright Logo" 
-              className="h-16 w-auto"
-            />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">IFRS 17 Master</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">IFRS 17 Quest and Concur</h1>
           <p className="text-gray-400">Regulatory Training Platform</p>
         </div>
 
@@ -246,6 +251,31 @@ const AuthScreen = ({ onLogin }) => {
                   </div>
                 </div>
 
+                {/* Company Type Field */}
+                <div>
+                  <label className="block text-gray-300 text-sm font-medium mb-2">
+                    Type of Company
+                  </label>
+                  <div className="relative">
+                    <Briefcase className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <select
+                      name="companyType"
+                      value={formData.companyType}
+                      onChange={handleInputChange}
+                      className="w-full bg-white/5 border border-white/20 rounded-lg pl-10 pr-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:border-purple-400 focus:bg-white/10 transition-all appearance-none"
+                      disabled={isLoading}
+                    >
+                      <option value="" className="bg-gray-900">Select company type</option>
+                      <option value="Insurer" className="bg-gray-900">Insurer</option>
+                      <option value="Actuarial" className="bg-gray-900">Actuarial</option>
+                      <option value="Reinsurer" className="bg-gray-900">Reinsurer</option>
+                      <option value="Broker" className="bg-gray-900">Broker</option>
+                      <option value="Agent Firm" className="bg-gray-900">Agent Firm</option>
+                      <option value="Other" className="bg-gray-900">Other</option>
+                    </select>
+                  </div>
+                </div>
+
                 {/* Country Field */}
                 <div>
                   <label className="block text-gray-300 text-sm font-medium mb-2">
@@ -342,7 +372,7 @@ const AuthScreen = ({ onLogin }) => {
               {/* Additional Info */}
               <div className="text-center">
                 <p className="text-gray-400 text-xs">
-                  © {new Date().getFullYear()} IRA - Kenbright. All rights reserved.
+                  © {new Date().getFullYear()} Kenbright. All rights reserved.
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
                   Version 2.0.0 | IFRS 17 Training Platform
@@ -350,13 +380,6 @@ const AuthScreen = ({ onLogin }) => {
               </div>
             </div>
           </div>
-        </div>
-
-        {/* Footer */}
-        <div className="mt-8 text-center">
-          <p className="text-gray-500 text-sm">
-            By continuing, you agree to our Terms of Service and Privacy Policy
-          </p>
         </div>
       </div>
     </div>
