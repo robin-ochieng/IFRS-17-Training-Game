@@ -2,16 +2,21 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize Supabase client
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
+const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
+const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error('Missing Supabase environment variables!');
+}
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 // Storage key constants
 const CURRENT_USER_KEY = 'ifrs17_current_user';
 const USERS_KEY = 'ifrs17_users';
+const AUTH_TOKEN_KEY = 'ifrs17_auth_token';
 
-// Get all users from Supabase
+// Get all users from Supabase - Updated to match new schema
 export const getAllUsersFromSupabase = async () => {
   try {
     const { data, error } = await supabase
@@ -31,18 +36,45 @@ export const getAllUsersFromSupabase = async () => {
   }
 };
 
-// Create a new user in Supabase - Updated to include gender
-export const createUserInSupabase = async (name, email, organization, country, gender = 'Prefer not to say') => {
+// Create a new user in Supabase - Updated for new schema
+export const createUserInSupabase = async (userData) => {
   try {
+    const { name, email, organization, country, gender, password } = userData;
+    
+    // If password is provided, create auth user first
+    let authUserId = null;
+    if (email && password) {
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            name,
+            organization,
+            country,
+            gender
+          }
+        }
+      });
+
+      if (authError) {
+        console.error('Auth signup error:', authError);
+        // Continue without auth if it fails
+      } else if (authData?.user) {
+        authUserId = authData.user.id;
+      }
+    }
+    
+    // Create user profile
+    const userId = authUserId || `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const avatar = name.charAt(0).toUpperCase();
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
     const { data, error } = await supabase
       .from('users')
       .insert([{
         id: userId,
         name,
-        email,
+        email: email || `${userId}@guest.local`,
         organization: organization || 'Independent',
         country: country || 'Unknown',
         gender: gender || 'Prefer not to say',
@@ -54,9 +86,43 @@ export const createUserInSupabase = async (name, email, organization, country, g
       .single();
 
     if (error) {
-      console.error('Error creating user:', error);
+      console.error('Error creating user profile:', error);
+      
+      // If user already exists, try to fetch it
+      if (error.code === '23505') { // Unique violation
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('*')
+          .eq('email', email)
+          .single();
+        
+        if (existingUser) return existingUser;
+      }
+      
       return null;
     }
+
+    // Initialize game progress for new user
+    await supabase
+      .from('game_progress')
+      .insert([{
+        user_id: userId,
+        current_module: 0,
+        current_question: 0,
+        total_score: 0,
+        level: 1,
+        xp: 0,
+        streak: 0,
+        combo: 0,
+        perfect_modules_count: 0,
+        completed_modules: [],
+        unlocked_modules: [0],
+        answered_questions: {},
+        achievements: [],
+        power_ups: { skip: 3, hint: 3, eliminate: 3 },
+        shuffled_questions: {},
+        last_saved: new Date().toISOString()
+      }]);
 
     return data;
   } catch (error) {
@@ -65,16 +131,71 @@ export const createUserInSupabase = async (name, email, organization, country, g
   }
 };
 
-// Update user in Supabase - Updated to handle all fields including gender
+// Sign in user with email and password
+export const signInUser = async (email, password) => {
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (error) {
+      console.error('Sign in error:', error);
+      return { success: false, error: error.message };
+    }
+
+    // Get user profile
+    const { data: profile, error: profileError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', data.user.id)
+      .single();
+
+    if (profileError) {
+      console.error('Profile fetch error:', profileError);
+      return { success: false, error: 'Failed to load user profile' };
+    }
+
+    // Store auth token
+    if (data.session) {
+      localStorage.setItem(AUTH_TOKEN_KEY, data.session.access_token);
+      setCurrentUserInSession(profile.id);
+    }
+
+    return { success: true, user: profile, session: data.session };
+  } catch (error) {
+    console.error('Sign in error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Sign out user
+export const signOutUser = async () => {
+  try {
+    const { error } = await supabase.auth.signOut();
+    
+    if (error) {
+      console.error('Sign out error:', error);
+    }
+    
+    // Clear local storage
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    clearCurrentUserSession();
+    
+    return { success: true };
+  } catch (error) {
+    console.error('Sign out error:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Update user in Supabase
 export const updateUserInSupabase = async (userId, updates) => {
   try {
-    // Ensure we don't accidentally update password_hash through this method
-    const { password_hash, ...safeUpdates } = updates;
-    
     const { data, error } = await supabase
       .from('users')
       .update({
-        ...safeUpdates,
+        ...updates,
         updated_at: new Date().toISOString()
       })
       .eq('id', userId)
@@ -96,6 +217,19 @@ export const updateUserInSupabase = async (userId, updates) => {
 // Delete user from Supabase
 export const deleteUserFromSupabase = async (userId) => {
   try {
+    // Delete game progress first
+    await supabase
+      .from('game_progress')
+      .delete()
+      .eq('user_id', userId);
+
+    // Delete module completions
+    await supabase
+      .from('module_completions')
+      .delete()
+      .eq('user_id', userId);
+
+    // Delete user profile
     const { error } = await supabase
       .from('users')
       .delete()
@@ -105,12 +239,6 @@ export const deleteUserFromSupabase = async (userId) => {
       console.error('Error deleting user:', error);
       return false;
     }
-
-    // Also delete from sessions if exists
-    await supabase
-      .from('current_sessions')
-      .delete()
-      .eq('user_id', userId);
 
     return true;
   } catch (error) {
@@ -122,6 +250,23 @@ export const deleteUserFromSupabase = async (userId) => {
 // Get current user from session
 export const getCurrentUserFromSupabase = async () => {
   try {
+    // First check if we have an auth session
+    const { data: { user: authUser } } = await supabase.auth.getUser();
+    
+    if (authUser) {
+      // Get full profile from users table
+      const { data: profile, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', authUser.id)
+        .single();
+
+      if (!error && profile) {
+        return profile;
+      }
+    }
+    
+    // Fallback to localStorage session
     const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
     if (!currentUserId) return null;
 
@@ -147,17 +292,6 @@ export const getCurrentUserFromSupabase = async () => {
 export const setCurrentUserInSession = (userId) => {
   try {
     localStorage.setItem(CURRENT_USER_KEY, userId);
-    
-    // Update last activity in Supabase
-    supabase
-      .from('current_sessions')
-      .upsert({
-        user_id: userId,
-        last_activity: new Date().toISOString()
-      })
-      .then(({ error }) => {
-        if (error) console.error('Error updating session:', error);
-      });
   } catch (error) {
     console.error('Error setting current user:', error);
   }
@@ -166,22 +300,54 @@ export const setCurrentUserInSession = (userId) => {
 // Clear current user session
 export const clearCurrentUserSession = () => {
   try {
-    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
-    
-    if (currentUserId) {
-      // Remove from sessions table
-      supabase
-        .from('current_sessions')
-        .delete()
-        .eq('user_id', currentUserId)
-        .then(({ error }) => {
-          if (error) console.error('Error clearing session:', error);
-        });
-    }
-    
     localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem(AUTH_TOKEN_KEY);
   } catch (error) {
     console.error('Error clearing current user:', error);
+  }
+};
+
+// Check if user exists by email
+export const checkUserExists = async (email) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email)
+      .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 = no rows
+      console.error('Error checking user:', error);
+      return false;
+    }
+
+    return !!data;
+  } catch (error) {
+    console.error('Error checking user exists:', error);
+    return false;
+  }
+};
+
+// Get user by email
+export const getUserByEmail = async (email) => {
+  try {
+    const { data, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('email', email)
+      .single();
+
+    if (error) {
+      if (error.code !== 'PGRST116') { // Not a "no rows" error
+        console.error('Error fetching user by email:', error);
+      }
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Error in getUserByEmail:', error);
+    return null;
   }
 };
 
@@ -189,51 +355,98 @@ export const clearCurrentUserSession = () => {
 export const migrateUsersToSupabase = async () => {
   try {
     const localUsers = localStorage.getItem(USERS_KEY);
-    if (!localUsers) return;
+    if (!localUsers) return { success: true, migrated: 0 };
 
     const users = JSON.parse(localUsers);
-    if (!Array.isArray(users) || users.length === 0) return;
+    if (!Array.isArray(users) || users.length === 0) {
+      return { success: true, migrated: 0 };
+    }
 
-    // Check which users already exist
-    const { data: existingUsers } = await supabase
-      .from('users')
-      .select('id');
-
-    const existingIds = new Set(existingUsers?.map(u => u.id) || []);
-
-    // Filter out users that already exist
-    const usersToMigrate = users.filter(user => !existingIds.has(user.id));
-
-    if (usersToMigrate.length === 0) return;
-
-    // Prepare users for insertion with all required fields
-    const preparedUsers = usersToMigrate.map(user => ({
-      id: user.id,
-      name: user.name,
-      email: user.email || '',
-      organization: user.organization || 'Independent',
-      country: user.country || 'Unknown',
-      gender: user.gender || 'Prefer not to say',
-      avatar: user.avatar || user.name.charAt(0).toUpperCase(),
-      created_at: user.createdAt || new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    }));
-
-    // Insert users in batches
-    const batchSize = 10;
-    for (let i = 0; i < preparedUsers.length; i += batchSize) {
-      const batch = preparedUsers.slice(i, i + batchSize);
-      const { error } = await supabase
-        .from('users')
-        .insert(batch);
-
-      if (error) {
-        console.error('Error migrating batch:', error);
+    let migratedCount = 0;
+    
+    for (const user of users) {
+      // Check if user already exists
+      const exists = await checkUserExists(user.email || `${user.id}@guest.local`);
+      
+      if (!exists) {
+        const result = await createUserInSupabase({
+          name: user.name,
+          email: user.email || `${user.id}@guest.local`,
+          organization: user.organization || 'Independent',
+          country: user.country || 'Unknown',
+          gender: user.gender || 'Prefer not to say'
+        });
+        
+        if (result) {
+          migratedCount++;
+          
+          // Migrate progress if exists
+          const progressKey = `ifrs17-progress-${user.id}`;
+          const savedProgress = localStorage.getItem(progressKey);
+          
+          if (savedProgress) {
+            try {
+              const progress = JSON.parse(savedProgress);
+              await supabase
+                .from('game_progress')
+                .upsert({
+                  user_id: result.id,
+                  current_module: progress.currentModule || 0,
+                  current_question: progress.currentQuestion || 0,
+                  total_score: progress.score || 0,
+                  level: progress.level || 1,
+                  xp: progress.xp || 0,
+                  streak: progress.streak || 0,
+                  combo: progress.combo || 0,
+                  perfect_modules_count: progress.perfectModulesCount || 0,
+                  completed_modules: progress.completedModules || [],
+                  unlocked_modules: progress.unlockedModules || [0],
+                  answered_questions: progress.answeredQuestions || {},
+                  achievements: progress.achievements || [],
+                  power_ups: progress.powerUps || { skip: 3, hint: 3, eliminate: 3 },
+                  shuffled_questions: progress.shuffledQuestions || {},
+                  last_saved: new Date().toISOString()
+                });
+              
+              console.log(`✅ Migrated progress for user: ${user.name}`);
+            } catch (progressError) {
+              console.error('Error migrating progress:', progressError);
+            }
+          }
+        }
       }
     }
 
-    console.log(`Successfully migrated ${preparedUsers.length} users to Supabase`);
+    console.log(`✅ Successfully migrated ${migratedCount} users to Supabase`);
+    return { success: true, migrated: migratedCount };
   } catch (error) {
     console.error('Error during migration:', error);
+    return { success: false, error: error.message, migrated: 0 };
   }
+};
+
+// Initialize auth state listener
+export const initializeAuthListener = (callback) => {
+  const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    console.log('Auth state changed:', event);
+    
+    if (event === 'SIGNED_IN' && session) {
+      localStorage.setItem(AUTH_TOKEN_KEY, session.access_token);
+      setCurrentUserInSession(session.user.id);
+      
+      // Get full user profile
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      
+      if (callback) callback({ event, user: profile, session });
+    } else if (event === 'SIGNED_OUT') {
+      clearCurrentUserSession();
+      if (callback) callback({ event, user: null, session: null });
+    }
+  });
+  
+  return authListener;
 };

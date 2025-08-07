@@ -1,63 +1,80 @@
-// App.js
+// App.js 
 import React, { useState, useEffect } from 'react';
 import AuthScreen from './components/AuthScreen';
 import IFRS17TrainingGame from './IFRS17TrainingGame';
 import { getCurrentAuthUser, signOut } from './modules/authService';
-import { Loader2 } from 'lucide-react';
+import { setStorageUser } from './modules/storageService';
 
 function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState('signin'); // 'signin' or 'signup'
 
+  // Check for existing user on mount
   useEffect(() => {
-    // Check if there's already a logged-in user
-    checkAuthStatus();
+    const checkAuth = async () => {
+      try {
+        const user = getCurrentAuthUser();
+        if (user) {
+          setCurrentUser(user);
+          setStorageUser(user.id);
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    checkAuth();
   }, []);
 
-  const checkAuthStatus = async () => {
+  // Handle successful login from AuthScreen
+  const handleLogin = (user) => {
+    setCurrentUser(user);
+    setStorageUser(user.id);
+    setShowAuth(false);
+  };
+
+  // Handle logout
+  const handleLogout = async () => {
     try {
-      const user = getCurrentAuthUser();
-      if (user) {
-        setCurrentUser(user);
-      }
+      await signOut();
+      setCurrentUser(null);
+      setShowAuth(true);
     } catch (error) {
-      console.error('Error checking auth status:', error);
-    } finally {
-      setIsLoading(false);
+      console.error('Logout error:', error);
     }
   };
 
-  const handleLogin = (user) => {
-    setCurrentUser(user);
+  // Handle showing auth modal from game
+  const handleShowAuth = (mode = 'signin') => {
+    setAuthMode(mode);
+    setShowAuth(true);
+    return Promise.resolve();
   };
 
-  const handleLogout = () => {
-    signOut();
-    setCurrentUser(null);
-  };
-
+  // Loading screen
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
-        <div className="text-center">
-          <Loader2 className="w-12 h-12 text-purple-400 animate-spin mx-auto mb-4" />
-          <p className="text-white text-lg">Loading IFRS 17 Master...</p>
-        </div>
+        <div className="text-white text-xl">Loading...</div>
       </div>
     );
   }
 
+  // Show auth screen if no user or explicitly showing auth
+  if (!currentUser || showAuth) {
+    return <AuthScreen onLogin={handleLogin} />;
+  }
+
+  // Show game for authenticated users
   return (
-    <div className="App">
-      {currentUser ? (
-        <IFRS17TrainingGame 
-          onLogout={handleLogout}
-          currentUser={currentUser}
-        />
-      ) : (
-        <AuthScreen onLogin={handleLogin} />
-      )}
-    </div>
+    <IFRS17TrainingGame 
+      onLogout={handleLogout}
+      onShowAuth={handleShowAuth}
+    />
   );
 }
 

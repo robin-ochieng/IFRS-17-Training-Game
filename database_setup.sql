@@ -1,297 +1,380 @@
--- Run this in Supabase SQL Editor
-CREATE TABLE leaderboard (
-  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
-  user_id TEXT NOT NULL,
-  user_name TEXT NOT NULL,
-  user_email TEXT,
-  organization TEXT,
+-- Users table for authentication and profile
+CREATE TABLE users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
   avatar TEXT,
-  score INTEGER NOT NULL DEFAULT 0,
-  level INTEGER NOT NULL DEFAULT 1,
-  achievements INTEGER DEFAULT 0,
-  modules_completed INTEGER DEFAULT 0,
-  perfect_modules INTEGER DEFAULT 0,
-  completed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  organization TEXT,
+  country TEXT DEFAULT 'Unknown',
+  gender TEXT DEFAULT 'Prefer not to say',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create index for faster lookups
+CREATE INDEX idx_users_email ON users(email);
+
+
+-- Store complete game state for each user
+CREATE TABLE game_progress (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  current_module INTEGER DEFAULT 0,
+  current_question INTEGER DEFAULT 0,
+  total_score INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  xp INTEGER DEFAULT 0,
+  streak INTEGER DEFAULT 0,
+  combo INTEGER DEFAULT 0,
+  perfect_modules_count INTEGER DEFAULT 0,
+  completed_modules JSONB DEFAULT '[]'::jsonb,
+  unlocked_modules JSONB DEFAULT '[0]'::jsonb,
+  answered_questions JSONB DEFAULT '{}'::jsonb,
+  achievements JSONB DEFAULT '[]'::jsonb,
+  power_ups JSONB DEFAULT '{"skip": 3, "hint": 3, "eliminate": 3}'::jsonb,
+  shuffled_questions JSONB DEFAULT '{}'::jsonb,
+  last_saved TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   UNIQUE(user_id)
 );
 
--- Create an index for faster queries
-CREATE INDEX idx_leaderboard_score ON leaderboard(score DESC);
+-- Create index for user lookups
+CREATE INDEX idx_game_progress_user_id ON game_progress(user_id);
 
--- Enable Row Level Security
-ALTER TABLE leaderboard ENABLE ROW LEVEL SECURITY;
 
--- Create a policy that allows anyone to read the leaderboard
-CREATE POLICY "Public leaderboard read access" ON leaderboard
+
+
+-- Track individual module completions
+CREATE TABLE module_completions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  module_id INTEGER NOT NULL,
+  module_name TEXT NOT NULL,
+  score INTEGER NOT NULL,
+  perfect_completion BOOLEAN DEFAULT FALSE,
+  completion_time INTEGER, -- in seconds
+  questions_answered INTEGER,
+  questions_correct INTEGER,
+  completed_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(user_id, module_id)
+);
+
+-- Create composite index for leaderboard queries
+CREATE INDEX idx_module_completions_module_score ON module_completions(module_id, score DESC);
+CREATE INDEX idx_module_completions_user ON module_completions(user_id);
+
+
+
+
+-- Create a materialized view for the overall leaderboard
+CREATE MATERIALIZED VIEW overall_leaderboard AS
+SELECT 
+  u.id as user_id,
+  u.name as user_name,
+  u.email,
+  u.avatar,
+  u.organization,
+  u.country,
+  u.gender,
+  COALESCE(gp.total_score, 0) as score,
+  COALESCE(gp.level, 1) as level,
+  COALESCE(jsonb_array_length(gp.achievements), 0) as achievements,
+  COALESCE(jsonb_array_length(gp.completed_modules), 0) as modules_completed,
+  COALESCE(gp.perfect_modules_count, 0) as perfect_modules,
+  RANK() OVER (ORDER BY COALESCE(gp.total_score, 0) DESC) as rank,
+  gp.last_saved as last_active
+FROM users u
+LEFT JOIN game_progress gp ON u.id = gp.user_id
+WHERE gp.total_score > 0
+ORDER BY score DESC;
+
+-- Create index for faster queries
+CREATE UNIQUE INDEX idx_overall_leaderboard_user ON overall_leaderboard(user_id);
+CREATE INDEX idx_overall_leaderboard_rank ON overall_leaderboard(rank);
+
+
+
+
+-- Create a view for module-specific leaderboards
+CREATE VIEW module_leaderboard AS
+SELECT 
+  mc.id,
+  mc.user_id,
+  u.name as user_name,
+  u.avatar,
+  u.organization,
+  u.country,
+  mc.module_id,
+  mc.module_name,
+  mc.score,
+  mc.perfect_completion,
+  mc.completion_time,
+  mc.completed_at,
+  RANK() OVER (PARTITION BY mc.module_id ORDER BY mc.score DESC, mc.completion_time ASC) as rank
+FROM module_completions mc
+JOIN users u ON mc.user_id = u.id
+ORDER BY mc.module_id, rank;
+
+
+
+-- Store session tokens for authenticated users
+CREATE TABLE session_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  token TEXT UNIQUE NOT NULL,
+  expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX idx_session_tokens_token ON session_tokens(token);
+CREATE INDEX idx_session_tokens_user ON session_tokens(user_id);
+
+
+
+
+-- Enable RLS on all tables
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_progress ENABLE ROW LEVEL SECURITY;
+ALTER TABLE module_completions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE session_tokens ENABLE ROW LEVEL SECURITY;
+
+-- Users policies
+CREATE POLICY "Users can view all profiles" ON users
   FOR SELECT USING (true);
 
--- Create a policy that allows users to insert/update their own records
-CREATE POLICY "Users can update own scores" ON leaderboard
-  FOR ALL USING (true);
+CREATE POLICY "Users can update own profile" ON users
+  FOR UPDATE USING (auth.uid() = id);
 
--- Create module_leaderboard table
-CREATE TABLE module_leaderboard (
-    id BIGSERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    module_id INTEGER NOT NULL,
-    module_name TEXT NOT NULL,
-    user_name TEXT NOT NULL,
-    user_email TEXT,
-    organization TEXT,
-    avatar TEXT,
-    score INTEGER NOT NULL DEFAULT 0,
-    perfect_completion BOOLEAN DEFAULT FALSE,
-    completion_time TIMESTAMP,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    
-    -- Ensure unique combination of user and module
-    UNIQUE(user_id, module_id)
-);
+-- Game progress policies
+CREATE POLICY "Users can view own progress" ON game_progress
+  FOR SELECT USING (auth.uid() = user_id);
 
--- Create indexes for better query performance
-CREATE INDEX idx_module_leaderboard_module_id ON module_leaderboard(module_id);
-CREATE INDEX idx_module_leaderboard_user_id ON module_leaderboard(user_id);
-CREATE INDEX idx_module_leaderboard_score ON module_leaderboard(score DESC);
-CREATE INDEX idx_module_leaderboard_module_score ON module_leaderboard(module_id, score DESC);
+CREATE POLICY "Users can update own progress" ON game_progress
+  FOR UPDATE USING (auth.uid() = user_id);
 
--- Create function to update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+CREATE POLICY "Users can insert own progress" ON game_progress
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+-- Module completions policies
+CREATE POLICY "Anyone can view module completions" ON module_completions
+  FOR SELECT USING (true);
+
+CREATE POLICY "Users can insert own completions" ON module_completions
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update own completions" ON module_completions
+  FOR UPDATE USING (auth.uid() = user_id);
+
+
+
+CREATE OR REPLACE FUNCTION save_game_progress(
+  p_user_id UUID,
+  p_progress JSONB
+) RETURNS JSONB AS $$
+DECLARE
+  v_result JSONB;
 BEGIN
-    NEW.updated_at = TIMEZONE('utc'::text, NOW());
-    RETURN NEW;
+  INSERT INTO game_progress (
+    user_id,
+    current_module,
+    current_question,
+    total_score,
+    level,
+    xp,
+    streak,
+    combo,
+    perfect_modules_count,
+    completed_modules,
+    unlocked_modules,
+    answered_questions,
+    achievements,
+    power_ups,
+    shuffled_questions,
+    last_saved
+  ) VALUES (
+    p_user_id,
+    (p_progress->>'currentModule')::INTEGER,
+    (p_progress->>'currentQuestion')::INTEGER,
+    (p_progress->>'score')::INTEGER,
+    (p_progress->>'level')::INTEGER,
+    (p_progress->>'xp')::INTEGER,
+    (p_progress->>'streak')::INTEGER,
+    (p_progress->>'combo')::INTEGER,
+    (p_progress->>'perfectModulesCount')::INTEGER,
+    p_progress->'completedModules',
+    p_progress->'unlockedModules',
+    p_progress->'answeredQuestions',
+    p_progress->'achievements',
+    p_progress->'powerUps',
+    p_progress->'shuffledQuestions',
+    NOW()
+  )
+  ON CONFLICT (user_id) DO UPDATE SET
+    current_module = EXCLUDED.current_module,
+    current_question = EXCLUDED.current_question,
+    total_score = EXCLUDED.total_score,
+    level = EXCLUDED.level,
+    xp = EXCLUDED.xp,
+    streak = EXCLUDED.streak,
+    combo = EXCLUDED.combo,
+    perfect_modules_count = EXCLUDED.perfect_modules_count,
+    completed_modules = EXCLUDED.completed_modules,
+    unlocked_modules = EXCLUDED.unlocked_modules,
+    answered_questions = EXCLUDED.answered_questions,
+    achievements = EXCLUDED.achievements,
+    power_ups = EXCLUDED.power_ups,
+    shuffled_questions = EXCLUDED.shuffled_questions,
+    last_saved = NOW()
+  RETURNING to_jsonb(game_progress.*) INTO v_result;
+  
+  RETURN v_result;
 END;
-$$ language 'plpgsql';
-
--- Create trigger to automatically update updated_at
-CREATE TRIGGER update_module_leaderboard_updated_at BEFORE UPDATE
-    ON module_leaderboard FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
--- Grant permissions (adjust based on your needs)
-GRANT ALL ON module_leaderboard TO authenticated;
-GRANT SELECT ON module_leaderboard TO anon;
-
--- Enable Row Level Security (optional but recommended)
-ALTER TABLE module_leaderboard ENABLE ROW LEVEL SECURITY;
-
--- Create RLS policies (adjust based on your needs)
--- Policy for users to view all leaderboard entries
-CREATE POLICY "Enable read access for all users" ON module_leaderboard
-    FOR SELECT USING (true);
-
--- Policy for users to insert/update their own entries
-CREATE POLICY "Enable insert for authenticated users only" ON module_leaderboard
-    FOR INSERT WITH CHECK (auth.uid()::text = user_id);
-
-CREATE POLICY "Enable update for users based on user_id" ON module_leaderboard
-    FOR UPDATE USING (auth.uid()::text = user_id);  
+$$ LANGUAGE plpgsql SECURITY DEFINER;  
 
 
--- Add country column to the main leaderboard table
-ALTER TABLE leaderboard 
-ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Unknown';
-
--- Add country column to the module leaderboard table
-ALTER TABLE module_leaderboard 
-ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Unknown';
-
--- Update the completion_time column to store seconds as INTEGER for easier sorting
-ALTER TABLE module_leaderboard 
-ALTER COLUMN completion_time TYPE INTEGER USING EXTRACT(EPOCH FROM completion_time)::INTEGER;
 
 
--- Create users table
-CREATE TABLE users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    email TEXT,
-    organization TEXT,
-    avatar TEXT NOT NULL,
-    country TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    last_login TIMESTAMP WITH TIME ZONE
-);
 
--- Create indexes for better performance
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_created_at ON users(created_at DESC);
-
--- Create function to update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_users_updated_at_column()
-RETURNS TRIGGER AS $$
+CREATE OR REPLACE FUNCTION submit_module_score(
+  p_user_id UUID,
+  p_module_id INTEGER,
+  p_module_name TEXT,
+  p_score INTEGER,
+  p_perfect BOOLEAN DEFAULT FALSE,
+  p_time INTEGER DEFAULT NULL,
+  p_questions_answered INTEGER DEFAULT NULL,
+  p_questions_correct INTEGER DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_result JSONB;
 BEGIN
-    NEW.updated_at = TIMEZONE('utc'::text, NOW());
-    RETURN NEW;
+  INSERT INTO module_completions (
+    user_id,
+    module_id,
+    module_name,
+    score,
+    perfect_completion,
+    completion_time,
+    questions_answered,
+    questions_correct,
+    completed_at
+  ) VALUES (
+    p_user_id,
+    p_module_id,
+    p_module_name,
+    p_score,
+    p_perfect,
+    p_time,
+    p_questions_answered,
+    p_questions_correct,
+    NOW()
+  )
+  ON CONFLICT (user_id, module_id) DO UPDATE SET
+    score = GREATEST(module_completions.score, EXCLUDED.score),
+    perfect_completion = module_completions.perfect_completion OR EXCLUDED.perfect_completion,
+    completion_time = LEAST(
+      COALESCE(module_completions.completion_time, EXCLUDED.completion_time),
+      COALESCE(EXCLUDED.completion_time, module_completions.completion_time)
+    ),
+    questions_answered = EXCLUDED.questions_answered,
+    questions_correct = EXCLUDED.questions_correct,
+    completed_at = NOW()
+  RETURNING to_jsonb(module_completions.*) INTO v_result;
+  
+  -- Refresh the materialized view
+  REFRESH MATERIALIZED VIEW CONCURRENTLY overall_leaderboard;
+  
+  RETURN v_result;
 END;
-$$ language 'plpgsql';
-
--- Create trigger to automatically update updated_at
-CREATE TRIGGER update_users_updated_at BEFORE UPDATE
-    ON users FOR EACH ROW EXECUTE FUNCTION update_users_updated_at_column();
-
--- Grant permissions
-GRANT ALL ON users TO authenticated;
-GRANT SELECT ON users TO anon;
-
--- Enable Row Level Security
-ALTER TABLE users ENABLE ROW LEVEL SECURITY;
-
--- Create RLS policies
--- Policy for users to view all users (for login screen)
-CREATE POLICY "Enable read access for all users" ON users
-    FOR SELECT USING (true);
-
--- Policy for users to insert their own profile
-CREATE POLICY "Enable insert for all users" ON users
-    FOR INSERT WITH CHECK (true);
-
--- Policy for users to update their own profile
-CREATE POLICY "Enable update for users based on id" ON users
-    FOR UPDATE USING (id = auth.uid()::text OR true); -- Allow all updates for now
-
--- Add a current_sessions table to track active sessions
-CREATE TABLE current_sessions (
-    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    session_started TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    last_activity TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
-);
-
--- Grant permissions for sessions
-GRANT ALL ON current_sessions TO authenticated;
-GRANT ALL ON current_sessions TO anon;
-
-
--- Check the table structure
-SELECT 
-    column_name,
-    data_type,
-    is_nullable
-FROM 
-    information_schema.columns
-WHERE 
-    table_name = 'module_leaderboard'
-ORDER BY 
-    ordinal_position;
-
--- If the table doesn't exist or is missing columns, recreate it:
-DROP TABLE IF EXISTS module_leaderboard CASCADE;
-
-CREATE TABLE module_leaderboard (
-    id BIGSERIAL PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    module_id INTEGER NOT NULL,
-    module_name TEXT NOT NULL,
-    user_name TEXT NOT NULL,
-    user_email TEXT,
-    organization TEXT,
-    avatar TEXT,
-    country TEXT,
-    score INTEGER NOT NULL DEFAULT 0,
-    perfect_completion BOOLEAN DEFAULT FALSE,
-    completion_time INTEGER, -- Time in seconds
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    
-    -- Ensure unique combination of user and module
-    UNIQUE(user_id, module_id)
-);
-
--- Create indexes
-CREATE INDEX idx_module_leaderboard_module_id ON module_leaderboard(module_id);
-CREATE INDEX idx_module_leaderboard_user_id ON module_leaderboard(user_id);
-CREATE INDEX idx_module_leaderboard_score ON module_leaderboard(score DESC);
-
--- Initially disable RLS for testing
-ALTER TABLE module_leaderboard DISABLE ROW LEVEL SECURITY;
-
--- Grant permissions
-GRANT ALL ON module_leaderboard TO anon;
-GRANT ALL ON module_leaderboard TO authenticated;
-
-
-
-
--- Add new columns to the users table
-ALTER TABLE users 
-ADD COLUMN IF NOT EXISTS gender TEXT,
-ADD COLUMN IF NOT EXISTS password_hash TEXT;
-
--- Make certain fields required by adding NOT NULL constraints
--- First, update existing NULL values to defaults
-UPDATE users SET country = 'Unknown' WHERE country IS NULL;
-UPDATE users SET organization = 'Independent' WHERE organization IS NULL;
-UPDATE users SET gender = 'Prefer not to say' WHERE gender IS NULL;
-
--- Then add the constraints
-ALTER TABLE users 
-ALTER COLUMN country SET NOT NULL,
-ALTER COLUMN organization SET NOT NULL;
-
--- Create a unique constraint on email for proper authentication
-ALTER TABLE users 
-ADD CONSTRAINT unique_email UNIQUE (email);
-
--- Update the leaderboard tables to include gender
-ALTER TABLE leaderboard 
-ADD COLUMN IF NOT EXISTS gender TEXT;
-
-ALTER TABLE module_leaderboard 
-ADD COLUMN IF NOT EXISTS gender TEXT;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 
 
 
+CREATE OR REPLACE FUNCTION get_leaderboard_with_position(
+  p_user_id UUID DEFAULT NULL,
+  p_limit INTEGER DEFAULT 50
+) RETURNS JSONB AS $$
+DECLARE
+  v_leaderboard JSONB;
+  v_user_position JSONB;
+BEGIN
+  -- Get top players
+  SELECT jsonb_agg(row_to_json(t.*))
+  INTO v_leaderboard
+  FROM (
+    SELECT * FROM overall_leaderboard
+    LIMIT p_limit
+  ) t;
+  
+  -- Get user's position if user_id provided
+  IF p_user_id IS NOT NULL THEN
+    SELECT to_jsonb(t.*)
+    INTO v_user_position
+    FROM (
+      SELECT * FROM overall_leaderboard
+      WHERE user_id = p_user_id
+    ) t;
+  END IF;
+  
+  RETURN jsonb_build_object(
+    'leaderboard', COALESCE(v_leaderboard, '[]'::jsonb),
+    'userPosition', v_user_position
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
--- Supabase Database Schema for User Progress
--- Run this SQL in your Supabase SQL Editor to create the user_progress table
 
--- Create user_progress table to store game progress
-CREATE TABLE IF NOT EXISTS user_progress (
-  id SERIAL PRIMARY KEY,
-  user_id TEXT NOT NULL UNIQUE,
-  progress_data JSONB NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
 
--- Create index on user_id for faster lookups
-CREATE INDEX IF NOT EXISTS idx_user_progress_user_id ON user_progress(user_id);
-
--- Enable Row Level Security (RLS)
-ALTER TABLE user_progress ENABLE ROW LEVEL SECURITY;
-
--- Create policy to allow users to access only their own progress
-CREATE POLICY "Users can manage their own progress" ON user_progress
-  USING (user_id = current_setting('app.current_user_id', true))
-  WITH CHECK (user_id = current_setting('app.current_user_id', true));
-
--- Alternative simpler policy (if the above doesn't work with your auth setup)
--- CREATE POLICY "Users can manage their own progress" ON user_progress
---   FOR ALL USING (true);
-
--- Function to automatically update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_user_progress_updated_at()
+CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = CURRENT_TIMESTAMP;
+  NEW.updated_at = NOW();
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Create trigger to auto-update updated_at
-CREATE TRIGGER update_user_progress_updated_at
-  BEFORE UPDATE ON user_progress
-  FOR EACH ROW EXECUTE FUNCTION update_user_progress_updated_at();
-
--- Grant permissions (adjust as needed for your setup)
-GRANT ALL ON user_progress TO authenticated;
-GRANT ALL ON user_progress TO anon;
+CREATE TRIGGER update_users_updated_at
+  BEFORE UPDATE ON users
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at();
 
 
-ALTER TABLE public.users 
-ADD COLUMN company_type TEXT;
+
+
+CREATE OR REPLACE FUNCTION refresh_leaderboard()
+RETURNS TRIGGER AS $$
+BEGIN
+  REFRESH MATERIALIZED VIEW CONCURRENTLY overall_leaderboard;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER refresh_leaderboard_on_progress
+  AFTER INSERT OR UPDATE ON game_progress
+  FOR EACH STATEMENT
+  EXECUTE FUNCTION refresh_leaderboard();  
+
+
+
+
+-- Additional indexes for better query performance
+CREATE INDEX idx_module_completions_completed_at ON module_completions(completed_at DESC);
+CREATE INDEX idx_game_progress_last_saved ON game_progress(last_saved DESC);
+CREATE INDEX idx_users_created_at ON users(created_at DESC);
+
+-- Partial indexes for active users
+CREATE INDEX idx_active_users ON game_progress(user_id) 
+  WHERE last_saved > NOW() - INTERVAL '30 days';  
+
+
+
+-- Run this after creating all tables and before using the application
+-- This ensures the materialized view is populated
+REFRESH MATERIALIZED VIEW overall_leaderboard;
+
+-- Create a scheduled job to refresh the leaderboard every 5 minutes (optional)
+-- This requires pg_cron extension
+-- SELECT cron.schedule('refresh-leaderboard', '*/5 * * * *', 
+--   'REFRESH MATERIALIZED VIEW CONCURRENTLY overall_leaderboard;');

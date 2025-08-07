@@ -85,6 +85,8 @@ const AuthScreen = ({ onLogin }) => {
     return true;
   };
 
+  // In AuthScreen.js, replace the handleSubmit function with this:
+  // In AuthScreen.js, update the handleSubmit function:
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -94,9 +96,15 @@ const AuthScreen = ({ onLogin }) => {
     setError('');
     
     try {
-      let user;
+      let result;
       if (isSignUp) {
-        user = await signUpUser({
+        console.log('Attempting to sign up with:', {
+          email: formData.email,
+          name: formData.name,
+          organization: formData.organization
+        });
+        
+        result = await signUpUser({
           email: formData.email,
           password: formData.password,
           name: formData.name,
@@ -105,14 +113,22 @@ const AuthScreen = ({ onLogin }) => {
           country: formData.country,
           gender: formData.gender
         });
+        
+        console.log('Sign up result:', result);
       } else {
-        user = await signInUser(formData.email, formData.password);
+        result = await signInUser(formData.email, formData.password);
       }
       
-      if (user) {
-        onLogin(user);
+      // Handle the new response format
+      if (result && result.success) {
+        onLogin(result.user);
+      } else {
+        // Show the actual error
+        console.error('Auth failed:', result);
+        setError(result?.error || 'An error occurred. Please try again.');
       }
     } catch (error) {
+      console.error('Submit error:', error);
       setError(error.message || 'An error occurred. Please try again.');
     } finally {
       setIsLoading(false);
@@ -140,7 +156,7 @@ const AuthScreen = ({ onLogin }) => {
         <img 
           src="/kenbright-logo.png" 
           alt="Kenbright Logo" 
-          className="h-16 w-auto"
+          className="h-24 w-auto"
         />
       </div>
       

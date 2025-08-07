@@ -7,9 +7,12 @@ import {
   getCurrentUserFromSupabase,
   setCurrentUserInSession,
   clearCurrentUserSession,
-  migrateUsersToSupabase
+  migrateUsersToSupabase,
+  signInUser,
+  signOutUser,
+  getUserByEmail,
+  checkUserExists
 } from './supabaseUserService';
-import { getCurrentAuthUser, isAuthenticated } from './authService';
 
 // Storage key constants (for backward compatibility)
 const USERS_KEY = 'ifrs17_users';
@@ -23,6 +26,15 @@ const ensureMigration = async () => {
   }
   return migrationPromise;
 };
+
+// Auto-run migration when module loads
+if (typeof window !== 'undefined') {
+  ensureMigration().then(result => {
+    if (result.migrated > 0) {
+      console.log(`✅ Migrated ${result.migrated} users to cloud storage`);
+    }
+  });
+}
 
 // Get all users - now from Supabase
 export const getAllUsers = async () => {
@@ -46,69 +58,91 @@ export const getAllUsers = async () => {
   }
 };
 
-// Create a new user profile - Updated to include gender
-export const createUserProfile = async (name, email = '', organization = '', country = '', gender = 'Prefer not to say') => {
+// Create a new user profile - Updated for new system
+export const createUserProfile = async (name, email = '', organization = '', country = '', gender = 'Prefer not to say', password = '') => {
   try {
-    // Use the new auth service for user creation
-    const newUser = await createUserInSupabase(name, email, organization, country, gender);
+    // Create user in Supabase
+    const newUser = await createUserInSupabase({
+      name,
+      email: email || `guest_${Date.now()}@guest.local`,
+      organization,
+      country,
+      gender,
+      password
+    });
+    
     if (newUser) {
+      // Also save to localStorage for backward compatibility
+      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+      const exists = users.find(u => u.id === newUser.id);
+      if (!exists) {
+        users.push(newUser);
+        localStorage.setItem(USERS_KEY, JSON.stringify(users));
+      }
+      
       return newUser;
     }
     
     // Fallback to local creation if Supabase fails
     const avatar = name.charAt(0).toUpperCase();
-    return {
+    const fallbackUser = {
       id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       name,
-      email,
+      email: email || `guest_${Date.now()}@guest.local`,
       organization,
       avatar,
       country,
       gender,
-      createdAt: new Date().toISOString()
+      created_at: new Date().toISOString()
     };
+    
+    // Save to localStorage
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    users.push(fallbackUser);
+    localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    
+    return fallbackUser;
   } catch (error) {
     console.error('Error creating user:', error);
-    // Fallback to local creation
-    const avatar = name.charAt(0).toUpperCase();
+    // Return a basic user object as last resort
     return {
-      id: `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      id: `user_${Date.now()}`,
       name,
       email,
       organization,
-      avatar,
+      avatar: name.charAt(0).toUpperCase(),
       country,
       gender,
-      createdAt: new Date().toISOString()
+      created_at: new Date().toISOString()
     };
   }
 };
 
-// Save a user - Updated to include gender
+// Save/update a user
 export const saveUser = async (user) => {
   try {
-    // Try to update first (in case user exists)
+    // Update in Supabase
     let savedUser = await updateUserInSupabase(user.id, user);
     
     // If update returns null, try to create
     if (!savedUser) {
-      savedUser = await createUserInSupabase(
-        user.name,
-        user.email,
-        user.organization,
-        user.country,
-        user.gender || 'Prefer not to say'
-      );
+      savedUser = await createUserInSupabase({
+        name: user.name,
+        email: user.email,
+        organization: user.organization,
+        country: user.country,
+        gender: user.gender || 'Prefer not to say'
+      });
     }
     
-    // Also save to localStorage as backup
-    const users = await getAllUsers();
+    // Also update localStorage for backward compatibility
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
     const existingIndex = users.findIndex(u => u.id === user.id);
     
     if (existingIndex >= 0) {
-      users[existingIndex] = user;
+      users[existingIndex] = savedUser || user;
     } else {
-      users.push(user);
+      users.push(savedUser || user);
     }
     
     localStorage.setItem(USERS_KEY, JSON.stringify(users));
@@ -134,51 +168,51 @@ export const saveUser = async (user) => {
 // Set the current user
 export const setCurrentUser = (userId) => {
   setCurrentUserInSession(userId);
+  localStorage.setItem(CURRENT_USER_KEY, userId);
 };
 
-// Get the current user - Updated to check auth first
+// Get the current user
 export const getCurrentUser = async () => {
   try {
-    // First check if user is authenticated through the new auth system
-    if (isAuthenticated()) {
-      const authUser = getCurrentAuthUser();
-      if (authUser) {
-        return authUser;
-      }
-    }
-    
-    // Otherwise fall back to the original system
+    // Get user from Supabase (handles both auth and session-based users)
     const user = await getCurrentUserFromSupabase();
-    return user;
+    if (user) return user;
+    
+    // Fallback to localStorage
+    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+    if (!currentUserId) return null;
+    
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    return users.find(u => u.id === currentUserId) || null;
   } catch (error) {
     console.error('Error getting current user:', error);
-    // Fallback to localStorage
-    try {
-      const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
-      if (!currentUserId) return null;
-      
-      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
-      return users.find(user => user.id === currentUserId) || null;
-    } catch (localError) {
-      console.error('Error getting current user from localStorage:', localError);
-      return null;
-    }
+    return null;
   }
 };
 
 // Get user-specific storage key (for game state)
-export const getUserStorageKey = async (baseKey) => {
-  const currentUser = await getCurrentUser();
-  if (!currentUser) return baseKey;
-  return `${baseKey}_${currentUser.id}`;
+export const getUserStorageKey = (userId) => {
+  if (!userId || userId === 'default-user') {
+    return 'ifrs17-progress';
+  }
+  return `ifrs17-progress-${userId}`;
 };
 
 // Clear current user (for logout)
-export const clearCurrentUser = () => {
-  clearCurrentUserSession();
+export const clearCurrentUser = async () => {
+  try {
+    await signOutUser();
+    clearCurrentUserSession();
+    localStorage.removeItem(CURRENT_USER_KEY);
+  } catch (error) {
+    console.error('Error clearing current user:', error);
+    // Still clear local storage even if signout fails
+    clearCurrentUserSession();
+    localStorage.removeItem(CURRENT_USER_KEY);
+  }
 };
 
-// Delete a user profile - now from Supabase
+// Delete a user profile
 export const deleteUser = async (userId) => {
   try {
     const success = await deleteUserFromSupabase(userId);
@@ -188,6 +222,12 @@ export const deleteUser = async (userId) => {
     const filteredUsers = users.filter(user => user.id !== userId);
     localStorage.setItem(USERS_KEY, JSON.stringify(filteredUsers));
     
+    // If the deleted user was the current user, clear the current user
+    const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+    if (currentUserId === userId) {
+      await clearCurrentUser();
+    }
+    
     return success;
   } catch (error) {
     console.error('Error deleting user:', error);
@@ -196,7 +236,6 @@ export const deleteUser = async (userId) => {
     const filteredUsers = users.filter(user => user.id !== userId);
     localStorage.setItem(USERS_KEY, JSON.stringify(filteredUsers));
     
-    // If the deleted user was the current user, clear the current user
     const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
     if (currentUserId === userId) {
       clearCurrentUser();
@@ -206,7 +245,7 @@ export const deleteUser = async (userId) => {
   }
 };
 
-// Update user profile - Updated to include gender
+// Update user profile
 export const updateUser = async (userId, updates) => {
   try {
     const updatedUser = await updateUserInSupabase(userId, updates);
@@ -220,7 +259,7 @@ export const updateUser = async (userId, updates) => {
       localStorage.setItem(USERS_KEY, JSON.stringify(users));
     }
     
-    return updatedUser;
+    return updatedUser || (userIndex >= 0 ? users[userIndex] : null);
   } catch (error) {
     console.error('Error updating user:', error);
     // Fallback to localStorage only
@@ -237,8 +276,75 @@ export const updateUser = async (userId, updates) => {
   }
 };
 
-// Legacy support - Updated to include gender
-export const user = {
+// Sign in with email and password
+export const signIn = async (email, password) => {
+  try {
+    const result = await signInUser(email, password);
+    
+    if (result.success) {
+      setCurrentUser(result.user.id);
+      
+      // Update localStorage
+      const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+      const existingIndex = users.findIndex(u => u.id === result.user.id);
+      
+      if (existingIndex >= 0) {
+        users[existingIndex] = result.user;
+      } else {
+        users.push(result.user);
+      }
+      
+      localStorage.setItem(USERS_KEY, JSON.stringify(users));
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('Error signing in:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Sign out
+export const signOut = async () => {
+  try {
+    const result = await signOutUser();
+    await clearCurrentUser();
+    return result;
+  } catch (error) {
+    console.error('Error signing out:', error);
+    return { success: false, error: error.message };
+  }
+};
+
+// Check if email is already registered
+export const isEmailRegistered = async (email) => {
+  try {
+    return await checkUserExists(email);
+  } catch (error) {
+    console.error('Error checking email:', error);
+    // Check localStorage as fallback
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    return users.some(u => u.email === email);
+  }
+};
+
+// Get user by email
+export const findUserByEmail = async (email) => {
+  try {
+    const user = await getUserByEmail(email);
+    if (user) return user;
+    
+    // Fallback to localStorage
+    const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+    return users.find(u => u.email === email) || null;
+  } catch (error) {
+    console.error('Error finding user by email:', error);
+    return null;
+  }
+};
+
+// Legacy support - default user for backward compatibility
+export const defaultUser = {
   id: 'default-user',
   name: 'Demo User',
   email: 'demo@example.com',
@@ -248,7 +354,74 @@ export const user = {
   gender: 'Prefer not to say'
 };
 
+// Get current user data with fallback
 export const getCurrentUserData = async () => {
   const currentUser = await getCurrentUser();
-  return currentUser || user;
+  return currentUser || defaultUser;
+};
+
+// Check if user is authenticated
+export const isAuthenticated = () => {
+  const currentUserId = localStorage.getItem(CURRENT_USER_KEY);
+  return currentUserId && currentUserId !== 'default-user' && !currentUserId.startsWith('guest_');
+};
+
+// Create guest user
+export const createGuestUser = () => {
+  const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const guestUser = {
+    id: guestId,
+    name: 'Guest Player',
+    email: `${guestId}@guest.local`,
+    organization: 'Guest',
+    avatar: 'G',
+    country: 'Unknown',
+    gender: 'Prefer not to say',
+    isGuest: true,
+    created_at: new Date().toISOString()
+  };
+  
+  // Save to localStorage
+  const users = JSON.parse(localStorage.getItem(USERS_KEY) || '[]');
+  users.push(guestUser);
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+  
+  // Set as current user
+  setCurrentUser(guestId);
+  
+  return guestUser;
+};
+
+// Convert guest to authenticated user
+export const convertGuestToUser = async (guestId, userData) => {
+  try {
+    // Create new authenticated user
+    const newUser = await createUserProfile(
+      userData.name,
+      userData.email,
+      userData.organization,
+      userData.country,
+      userData.gender,
+      userData.password
+    );
+    
+    if (newUser) {
+      // Migrate progress from guest to new user
+      const { migrateProgress } = await import('./storageService');
+      await migrateProgress(guestId, newUser.id);
+      
+      // Delete guest user
+      await deleteUser(guestId);
+      
+      // Set new user as current
+      setCurrentUser(newUser.id);
+      
+      return newUser;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error('Error converting guest to user:', error);
+    return null;
+  }
 };

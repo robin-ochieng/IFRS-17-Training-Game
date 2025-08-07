@@ -1,67 +1,64 @@
 // src/modules/storageService.js
-import { getUserStorageKey } from './userProfile';
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || 'YOUR_SUPABASE_URL';
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY || 'YOUR_SUPABASE_ANON_KEY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { 
+  saveGameProgress, 
+  loadGameProgress, 
+  clearGameProgress 
+} from '../modules/supabaseService';
 
 let STORAGE_KEY = 'ifrs17-progress';
 let CURRENT_USER_ID = null;
 
-// Add function to set user-specific storage
+// Set user-specific storage
 export const setStorageUser = (userId) => {
   CURRENT_USER_ID = userId;
-  STORAGE_KEY = getUserStorageKey(userId);
+  STORAGE_KEY = `ifrs17-progress-${userId}`;
 };
 
-// Save game state to both localStorage and Supabase
+// Get current storage key
+export const getStorageKey = () => STORAGE_KEY;
+
+// Save game state - Updated to use new Supabase service
 export const saveGameState = async (gameState) => {
   try {
+    // Prepare data for saving
     const dataToSave = {
       currentModule: gameState.currentModule,
       currentQuestion: gameState.currentQuestion,
       score: gameState.score,
       level: gameState.level,
       xp: gameState.xp,
-      completedModules: gameState.completedModules,
-      answeredQuestions: gameState.answeredQuestions,
-      achievements: gameState.achievements.map(a => a.id),
-      powerUps: gameState.powerUps,
       streak: gameState.streak,
       combo: gameState.combo,
       perfectModulesCount: gameState.perfectModulesCount,
+      completedModules: gameState.completedModules || [],
+      unlockedModules: gameState.unlockedModules || [0],
+      answeredQuestions: gameState.answeredQuestions || {},
+      achievements: Array.isArray(gameState.achievements) 
+        ? gameState.achievements.map(a => typeof a === 'string' ? a : a.id)
+        : [],
+      powerUps: gameState.powerUps || { skip: 3, hint: 3, eliminate: 3 },
       shuffledQuestions: gameState.shuffledQuestions || {},
       timestamp: new Date().toISOString()
     };
     
-    // Save to localStorage as backup
+    // Save to localStorage as backup (for offline/guest users)
     localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
     
     // Save to Supabase if user is authenticated
-    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
-      try {
-        const { error } = await supabase
-          .from('user_progress')
-          .upsert({
-            user_id: CURRENT_USER_ID,
-            progress_data: dataToSave,
-            updated_at: new Date().toISOString()
-          }, {
-            onConflict: 'user_id'
-          });
-        
-        if (error) {
-          console.error('Supabase save error:', error);
-        } else {
-          console.log('✅ Progress saved to Supabase successfully');
-        }
-      } catch (supabaseError) {
-        console.error('Failed to save to Supabase:', supabaseError);
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user' && !CURRENT_USER_ID.startsWith('guest_')) {
+      const result = await saveGameProgress(CURRENT_USER_ID, dataToSave);
+      
+      if (result.success) {
+        console.log('✅ Progress saved to database');
+        return true;
+      } else {
+        console.error('❌ Failed to save to database:', result.error);
+        // localStorage save was successful, so return true
+        return true;
       }
     }
     
+    console.log('💾 Progress saved to localStorage');
     return true;
   } catch (error) {
     console.error('Failed to save game state:', error);
@@ -69,24 +66,39 @@ export const saveGameState = async (gameState) => {
   }
 };
 
-// Load game state from Supabase first, fallback to localStorage
+// Load game state - Updated to use new Supabase service
 export const loadGameState = async () => {
   try {
-    // First try to load from Supabase if user is authenticated
-    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
-      try {
-        const { data, error } = await supabase
-          .from('user_progress')
-          .select('progress_data')
-          .eq('user_id', CURRENT_USER_ID)
-          .single();
+    // Try to load from Supabase first if user is authenticated
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user' && !CURRENT_USER_ID.startsWith('guest_')) {
+      const dbProgress = await loadGameProgress(CURRENT_USER_ID);
+      
+      if (dbProgress) {
+        console.log('✅ Progress loaded from database');
         
-        if (data && data.progress_data && !error) {
-          console.log('✅ Progress loaded from Supabase successfully');
-          return data.progress_data;
-        }
-      } catch (supabaseError) {
-        console.error('Failed to load from Supabase:', supabaseError);
+        // Format the data from database to match expected structure
+        const formattedProgress = {
+          currentModule: dbProgress.current_module || 0,
+          currentQuestion: dbProgress.current_question || 0,
+          score: dbProgress.total_score || 0,
+          level: dbProgress.level || 1,
+          xp: dbProgress.xp || 0,
+          streak: dbProgress.streak || 0,
+          combo: dbProgress.combo || 0,
+          perfectModulesCount: dbProgress.perfect_modules_count || 0,
+          completedModules: dbProgress.completed_modules || [],
+          unlockedModules: dbProgress.unlocked_modules || [0],
+          answeredQuestions: dbProgress.answered_questions || {},
+          achievements: dbProgress.achievements || [],
+          powerUps: dbProgress.power_ups || { skip: 3, hint: 3, eliminate: 3 },
+          shuffledQuestions: dbProgress.shuffled_questions || {},
+          timestamp: dbProgress.last_saved
+        };
+        
+        // Also update localStorage with latest from database
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(formattedProgress));
+        
+        return formattedProgress;
       }
     }
     
@@ -95,35 +107,39 @@ export const loadGameState = async () => {
     if (!saved) return null;
     
     const gameState = JSON.parse(saved);
-    console.log('📱 Progress loaded from localStorage (fallback)');
+    console.log('📱 Progress loaded from localStorage');
     return gameState;
   } catch (error) {
     console.error('Failed to load game state:', error);
+    
+    // Last resort: try localStorage
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (localError) {
+      console.error('Failed to load from localStorage:', localError);
+    }
+    
     return null;
   }
 };
 
-// Clear saved game state from both localStorage and Supabase
+// Clear saved game state - Updated to use new Supabase service
 export const clearGameState = async () => {
   try {
     // Clear localStorage
     localStorage.removeItem(STORAGE_KEY);
     
-    // Clear Supabase if user is authenticated
-    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user') {
-      try {
-        const { error } = await supabase
-          .from('user_progress')
-          .delete()
-          .eq('user_id', CURRENT_USER_ID);
-        
-        if (error) {
-          console.error('Supabase clear error:', error);
-        } else {
-          console.log('✅ Progress cleared from Supabase successfully');
-        }
-      } catch (supabaseError) {
-        console.error('Failed to clear from Supabase:', supabaseError);
+    // Clear from Supabase if user is authenticated
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user' && !CURRENT_USER_ID.startsWith('guest_')) {
+      const result = await clearGameProgress(CURRENT_USER_ID);
+      
+      if (result.success) {
+        console.log('✅ Progress cleared from database');
+      } else {
+        console.error('❌ Failed to clear from database:', result.error);
       }
     }
     
@@ -135,23 +151,45 @@ export const clearGameState = async () => {
 };
 
 // Check if saved game exists
-export const hasSavedGame = () => {
+export const hasSavedGame = async () => {
+  // Check database first
+  if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user' && !CURRENT_USER_ID.startsWith('guest_')) {
+    const dbProgress = await loadGameProgress(CURRENT_USER_ID);
+    if (dbProgress) return true;
+  }
+  
+  // Check localStorage
   return localStorage.getItem(STORAGE_KEY) !== null;
 };
 
 // Get save game metadata (without loading full state)
-export const getSaveMetadata = () => {
+export const getSaveMetadata = async () => {
   try {
+    // Try to get from database first
+    if (CURRENT_USER_ID && CURRENT_USER_ID !== 'default-user' && !CURRENT_USER_ID.startsWith('guest_')) {
+      const dbProgress = await loadGameProgress(CURRENT_USER_ID);
+      if (dbProgress) {
+        return {
+          score: dbProgress.total_score || 0,
+          level: dbProgress.level || 1,
+          completedModules: dbProgress.completed_modules?.length || 0,
+          timestamp: dbProgress.last_saved,
+          totalModules: 5 // Update this based on your actual module count
+        };
+      }
+    }
+    
+    // Fallback to localStorage
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return null;
     
     const gameState = JSON.parse(saved);
     return {
-      score: gameState.score,
-      level: gameState.level,
+      score: gameState.score || 0,
+      level: gameState.level || 1,
       completedModules: gameState.completedModules?.length || 0,
       timestamp: gameState.timestamp,
-      totalModules: 10 // You can make this dynamic
+      totalModules: 5 // Update this based on your actual module count
     };
   } catch (error) {
     console.error('Failed to get save metadata:', error);
@@ -162,21 +200,26 @@ export const getSaveMetadata = () => {
 // Export game progress as JSON (for backup)
 export const exportProgress = (gameState) => {
   const dataToExport = {
-    gameVersion: '1.0.0',
+    gameVersion: '2.0.0', // Updated version
     exportDate: new Date().toISOString(),
+    userId: CURRENT_USER_ID,
     gameState: {
       currentModule: gameState.currentModule,
       currentQuestion: gameState.currentQuestion,
       score: gameState.score,
       level: gameState.level,
       xp: gameState.xp,
-      completedModules: gameState.completedModules,
-      answeredQuestions: gameState.answeredQuestions,
-      achievements: gameState.achievements.map(a => a.id),
-      powerUps: gameState.powerUps,
       streak: gameState.streak,
       combo: gameState.combo,
-      perfectModulesCount: gameState.perfectModulesCount
+      perfectModulesCount: gameState.perfectModulesCount,
+      completedModules: gameState.completedModules,
+      unlockedModules: gameState.unlockedModules,
+      answeredQuestions: gameState.answeredQuestions,
+      achievements: Array.isArray(gameState.achievements) 
+        ? gameState.achievements.map(a => typeof a === 'string' ? a : a.id)
+        : [],
+      powerUps: gameState.powerUps,
+      shuffledQuestions: gameState.shuffledQuestions
     }
   };
   
@@ -184,11 +227,15 @@ export const exportProgress = (gameState) => {
 };
 
 // Import game progress from JSON
-export const importProgress = (jsonString) => {
+export const importProgress = async (jsonString) => {
   try {
     const imported = JSON.parse(jsonString);
     if (imported.gameState) {
-      return imported.gameState;
+      // Save the imported state
+      const success = await saveGameState(imported.gameState);
+      if (success) {
+        return imported.gameState;
+      }
     }
     return null;
   } catch (error) {
@@ -197,3 +244,52 @@ export const importProgress = (jsonString) => {
   }
 };
 
+// Migrate progress from old user to new user
+export const migrateProgress = async (oldUserId, newUserId) => {
+  try {
+    // Load progress from old user
+    const oldStorageKey = `ifrs17-progress-${oldUserId}`;
+    const oldProgress = localStorage.getItem(oldStorageKey);
+    
+    if (oldProgress) {
+      // Save to new user
+      setStorageUser(newUserId);
+      const progressData = JSON.parse(oldProgress);
+      const success = await saveGameState(progressData);
+      
+      if (success) {
+        // Clear old progress
+        localStorage.removeItem(oldStorageKey);
+        console.log('✅ Progress migrated successfully');
+        return true;
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Failed to migrate progress:', error);
+    return false;
+  }
+};
+
+// Sync local progress to database (for when user signs in)
+export const syncLocalToDatabase = async (userId) => {
+  try {
+    const localProgress = localStorage.getItem(STORAGE_KEY);
+    if (!localProgress) return false;
+    
+    const progressData = JSON.parse(localProgress);
+    setStorageUser(userId);
+    
+    const success = await saveGameState(progressData);
+    if (success) {
+      console.log('✅ Local progress synced to database');
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Failed to sync local to database:', error);
+    return false;
+  }
+};

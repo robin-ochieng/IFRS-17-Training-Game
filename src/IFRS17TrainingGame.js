@@ -1,18 +1,62 @@
-//src/IFRS17TrainingGame.js
-// IFRS 17 Training Game Component
-
-import React, { useState, useEffect } from 'react';
-import { Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, Award } from 'lucide-react';
+// IFRS17TrainingGame.js - Updated with new leaderboard system
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, 
+  Award, Clock, LogIn, UserPlus 
+} from 'lucide-react';
 import { modules } from './data/IFRS17Modules';
-import { achievementsList, getNewAchievements, createAchievementStats, getGenderBasedAchievementName, getGenderBasedAchievementIcon } from './modules/achievements';
-import { INITIAL_POWER_UPS, consumePowerUp, refreshPowerUps, canUsePowerUp, getPowerUpInfo } from './modules/powerUps';
-import { saveGameState, loadGameState, clearGameState, setStorageUser } from './modules/storageService';
-import { getCurrentUser } from './modules/userProfile';
-import { submitToLeaderboard, getLeaderboard, submitModuleScore, getModuleLeaderboard } from './modules/supabaseLeaderboard';
+import { 
+  achievementsList, 
+  getNewAchievements, 
+  createAchievementStats, 
+  getGenderBasedAchievementName, 
+  getGenderBasedAchievementIcon 
+} from './modules/achievements';
+import { 
+  INITIAL_POWER_UPS, 
+  consumePowerUp, 
+  refreshPowerUps, 
+  canUsePowerUp, 
+  getPowerUpInfo 
+} from './modules/powerUps';
+import { 
+  createGuestUser, 
+  getGuestUser, 
+  saveGuestProgress, 
+  getGuestProgress,
+  trackGuestEvent 
+} from './modules/guestUserService';
+import AuthenticationModal from './components/AuthenticationModal';
+import LeaderboardModal from './modules/LeaderboardModal';
 
-// Add onLogout as a prop and remove the problematic import
-const IFRS17TrainingGame = ({ onLogout }) => {
+// Import new Supabase service functions
+import {
+  getCurrentUser,
+  signIn,
+  signUp,
+  signOut,
+  saveGameProgress,
+  loadGameProgress,
+  clearGameProgress,
+  submitModuleScore,
+  getOverallLeaderboard,
+  getModuleLeaderboard,
+  syncAllGameData,
+  testConnection
+} from './modules/supabaseService';
+
+import { saveGameState, loadGameState, setStorageUser } from './modules/storageService';
+
+
+const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
+  // User state
   const [currentUser, setCurrentUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pendingModule1Completion, setPendingModule1Completion] = useState(null);
+  
+  // Game state
   const [currentModule, setCurrentModule] = useState(0);
   const [currentQuestion, setCurrentQuestion] = useState(0);
   const [score, setScore] = useState(0);
@@ -35,14 +79,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   const [showLevelUp, setShowLevelUp] = useState(false);
   const [showAchievement, setShowAchievement] = useState(null);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [leaderboardData, setLeaderboardData] = useState([]);
-  const [isLoadingLeaderboard, setIsLoadingLeaderboard] = useState(false);
-  const [leaderboardView, setLeaderboardView] = useState('overall'); // 'overall' or module index
   const [moduleStartTime, setModuleStartTime] = useState(null);
   const [completedModuleScore, setCompletedModuleScore] = useState(0);
   const [shuffledQuestions, setShuffledQuestions] = useState({});
+  const [currentTime, setCurrentTime] = useState(0);
+  const [isSavingProgress, setIsSavingProgress] = useState(false);
+  const timerInterval = useRef(null);
   
-  // Fisher-Yates shuffle algorithm to randomize array
+  // Fisher-Yates shuffle algorithm
   const shuffleArray = (array) => {
     const shuffled = [...array];
     for (let i = shuffled.length - 1; i > 0; i--) {
@@ -52,11 +96,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     return shuffled;
   };
 
-  // Get shuffled questions for a module, or create if doesn't exist
+  // Get shuffled questions for a module
   const getShuffledQuestions = (moduleIndex) => {
     if (!shuffledQuestions[moduleIndex]) {
       const originalQuestions = modules[moduleIndex].questions;
-      const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ ...q, originalIndex: index })));
+      const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ 
+        ...q, 
+        originalIndex: index 
+      })));
       setShuffledQuestions(prev => ({
         ...prev,
         [moduleIndex]: shuffled
@@ -67,56 +114,197 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   };
   
   // Load current user on component mount
-  // Load current user on component mount
   useEffect(() => {
     const loadUser = async () => {
       try {
-        const user = await getCurrentUser();
-        if (user) {
-          setCurrentUser(user);
-          // Set user-specific storage when user is loaded
-          setStorageUser(user.id);
+        // Try to get authenticated user from props or auth service
+        const authenticatedUser = await getCurrentUser();
+        
+        if (authenticatedUser && !authenticatedUser.isGuest) {
+          setCurrentUser(authenticatedUser);
+          setIsGuest(false);
+          setStorageUser(authenticatedUser.id);
+          trackGuestEvent('authenticated_user_loaded', { userId: authenticatedUser.id });
+          
+          // Load saved progress from database
+          const savedProgress = await loadGameState();
+          if (savedProgress) {
+            // Restore all game state
+            setCurrentModule(savedProgress.currentModule || 0);
+            setCurrentQuestion(savedProgress.currentQuestion || 0);
+            setScore(savedProgress.score || 0);
+            setLevel(savedProgress.level || 1);
+            setXp(savedProgress.xp || 0);
+            setStreak(savedProgress.streak || 0);
+            setCombo(savedProgress.combo || 0);
+            setPerfectModulesCount(savedProgress.perfectModulesCount || 0);
+            setCompletedModules(savedProgress.completedModules || []);
+            setUnlockedModules(savedProgress.unlockedModules || [0]);
+            setAnsweredQuestions(savedProgress.answeredQuestions || {});
+            setPowerUps(savedProgress.powerUps || INITIAL_POWER_UPS);
+            setShuffledQuestions(savedProgress.shuffledQuestions || {});
+            
+            const restoredAchievements = achievementsList.filter(a => 
+              savedProgress.achievements?.includes(a.id)
+            );
+            setAchievements(restoredAchievements);
+          }
         } else {
-          // Fallback user if no user is found
-          const fallbackUser = {
-            id: 'default-user',
-            name: 'Demo User',
-            email: 'demo@example.com',
-            organization: 'Demo Organization',
-            avatar: 'D',
-            country: 'Kenya' 
-          };
-          setCurrentUser(fallbackUser);
-          setStorageUser(fallbackUser.id);
+          // Create or load guest user
+          let guestUser = getGuestUser();
+          if (!guestUser) {
+            guestUser = createGuestUser();
+            trackGuestEvent('guest_user_created', { guestId: guestUser.id });
+          } else {
+            trackGuestEvent('guest_user_loaded', { guestId: guestUser.id });
+          }
+          
+          setCurrentUser(guestUser);
+          setIsGuest(true);
+          setStorageUser(guestUser.id);
+          
+          // Load guest progress from localStorage
+          const savedState = getGuestProgress();
+          if (savedState) {
+            setCurrentModule(savedState.currentModule || 0);
+            setCurrentQuestion(savedState.currentQuestion || 0);
+            setScore(savedState.score || 0);
+            setLevel(savedState.level || 1);
+            setXp(savedState.xp || 0);
+            setCompletedModules(savedState.completedModules || []);
+            setAnsweredQuestions(savedState.answeredQuestions || {});
+            setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+            setStreak(savedState.streak || 0);
+            setCombo(savedState.combo || 0);
+            setPerfectModulesCount(savedState.perfectModulesCount || 0);
+            setShuffledQuestions(savedState.shuffledQuestions || {});
+            
+            const restoredAchievements = achievementsList.filter(a => 
+              savedState.achievements?.includes(a.id)
+            );
+            setAchievements(restoredAchievements);
+          }
         }
       } catch (error) {
         console.error('Error loading user:', error);
-        // Use fallback user on error
-        const fallbackUser = {
-          id: 'default-user',
-          name: 'Demo User',
-          email: 'demo@example.com',
-          organization: 'Demo Organization',
-          avatar: 'D',
-          country: 'Kenya' 
-        };
-        setCurrentUser(fallbackUser);
-        setStorageUser(fallbackUser.id);
+        // Create guest user on error
+        const guestUser = createGuestUser();
+        trackGuestEvent('guest_user_created_on_error', { 
+          guestId: guestUser.id, 
+          error: error.message 
+        });
+        setCurrentUser(guestUser);
+        setIsGuest(true);
+        setStorageUser(guestUser.id);
       }
     };
     
     loadUser();
   }, []);
 
+  // Load user progress from database
+  const loadUserProgress = async (userId) => {
+    try {
+      const savedProgress = await loadGameProgress(userId);
+      
+      if (savedProgress) {
+        // Restore game state from database
+        setCurrentModule(savedProgress.current_module || 0);
+        setCurrentQuestion(savedProgress.current_question || 0);
+        setScore(savedProgress.total_score || 0);
+        setLevel(savedProgress.level || 1);
+        setXp(savedProgress.xp || 0);
+        setStreak(savedProgress.streak || 0);
+        setCombo(savedProgress.combo || 0);
+        setPerfectModulesCount(savedProgress.perfect_modules_count || 0);
+        setCompletedModules(savedProgress.completed_modules || []);
+        setUnlockedModules(savedProgress.unlocked_modules || [0]);
+        setAnsweredQuestions(savedProgress.answered_questions || {});
+        setPowerUps(savedProgress.power_ups || INITIAL_POWER_UPS);
+        setShuffledQuestions(savedProgress.shuffled_questions || {});
+        
+        // Restore achievements
+        const restoredAchievements = achievementsList.filter(a => 
+          savedProgress.achievements?.includes(a.id)
+        );
+        setAchievements(restoredAchievements);
+        
+        console.log('✅ Progress loaded from database');
+      }
+    } catch (error) {
+      console.error('❌ Error loading progress:', error);
+    }
+  };
+
+  // Load guest progress from localStorage
+  const loadGuestProgressData = () => {
+    const savedState = getGuestProgress();
+    
+    if (savedState) {
+      setCurrentModule(savedState.currentModule || 0);
+      setCurrentQuestion(savedState.currentQuestion || 0);
+      setScore(savedState.score || 0);
+      setLevel(savedState.level || 1);
+      setXp(savedState.xp || 0);
+      setCompletedModules(savedState.completedModules || []);
+      setAnsweredQuestions(savedState.answeredQuestions || {});
+      setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+      setStreak(savedState.streak || 0);
+      setCombo(savedState.combo || 0);
+      setPerfectModulesCount(savedState.perfectModulesCount || 0);
+      setShuffledQuestions(savedState.shuffledQuestions || {});
+      
+      const restoredAchievements = achievementsList.filter(a => 
+        savedState.achievements?.includes(a.id)
+      );
+      setAchievements(restoredAchievements);
+      
+      console.log('✅ Guest progress loaded from localStorage');
+    }
+  };
+
   // Helper function to format time
   const formatTime = (seconds) => {
-    if (!seconds) return 'N/A';
+    if (seconds === null || seconds === undefined) return '0:00';
     const minutes = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Helper function to get achievement display data with gender consideration
+  // Timer useEffect
+  useEffect(() => {
+    if (moduleStartTime && !completedModules.includes(currentModule)) {
+      const interval = setInterval(() => {
+        const now = new Date();
+        const elapsed = Math.floor((now - moduleStartTime) / 1000);
+        setCurrentTime(elapsed);
+      }, 1000);
+      
+      timerInterval.current = interval;
+      
+      return () => {
+        clearInterval(interval);
+        timerInterval.current = null;
+      };
+    } else {
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+        timerInterval.current = null;
+      }
+      setCurrentTime(0);
+    }
+  }, [moduleStartTime, currentModule, completedModules]);
+
+  // Initialize timer for fresh starts
+  useEffect(() => {
+    if (currentUser && currentModule !== null && 
+        !completedModules.includes(currentModule) && !moduleStartTime) {
+      setModuleStartTime(new Date());
+      setCurrentTime(0);
+    }
+  }, [currentUser, currentModule, completedModules, moduleStartTime]);
+
+  // Get achievement display data
   const getAchievementDisplayData = (achievement) => {
     const originalAchievement = achievementsList.find(a => a.id === achievement.id);
     if (originalAchievement?.genderBased && currentUser?.gender) {
@@ -129,6 +317,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     return achievement;
   };
 
+  // Handle answer selection
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
     if (answeredQuestions[questionKey]?.answered) return;
@@ -140,10 +329,16 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setIsCorrect(correct);
     setShowFeedback(true);
     
-    setAnsweredQuestions({ 
+    // Track answered question
+    const updatedAnsweredQuestions = { 
       ...answeredQuestions, 
-      [questionKey]: { answered: true, selectedAnswer: answerIndex, wasCorrect: correct } 
-    });
+      [questionKey]: { 
+        answered: true, 
+        selectedAnswer: answerIndex, 
+        wasCorrect: correct 
+      } 
+    };
+    setAnsweredQuestions(updatedAnsweredQuestions);
 
     if (correct) {
       const points = 10 * (combo + 1);
@@ -152,14 +347,6 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setStreak(streak + 1);
       setCombo(combo + 1);
       setXp(xp + 25);
-      
-      if ((streak + 1) % 5 === 0) {
-        console.log(`🔥 ${streak + 1} STREAK! Keep going!`);
-      }
-      
-      if (combo >= 5) {
-        console.log(`💥 MEGA COMBO x${combo + 1}!`);
-      }
       
       if (xp + 25 >= level * 100) {
         setLevel(level + 1);
@@ -173,53 +360,133 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       setPerfectModule(false);
     }
 
+    // Save progress after each answer
+    saveProgress();
+
     setTimeout(async () => {
-        if (currentQuestion < currentModuleQuestions.length - 1) {
-          setCurrentQuestion(currentQuestion + 1);
-          setShowFeedback(false);
-          setSelectedAnswer(null);
-        } else {
+      if (currentQuestion < currentModuleQuestions.length - 1) {
+        setCurrentQuestion(currentQuestion + 1);
+        setShowFeedback(false);
+        setSelectedAnswer(null);
+      } else {
+        // Module complete
+        await handleModuleCompletion(correct);
+      }
+    }, 7000);
+  };
 
-         // Store the module score for the modal
-        setCompletedModuleScore(moduleScore);
+  // Handle module completion
+  const handleModuleCompletion = async (lastAnswerCorrect) => {
+    // Calculate final module score
+    const finalModuleScore = lastAnswerCorrect 
+      ? moduleScore + (10 * (combo + 1)) 
+      : moduleScore;
+    
+    setCompletedModuleScore(finalModuleScore);
 
-        if (perfectModule) {
-          setPerfectModulesCount(prev => prev + 1);
-        }        
+    if (perfectModule) {
+      setPerfectModulesCount(prev => prev + 1);
+    }
 
-        // Submit to Supabase BEFORE showing completion modal
-        const endTime = new Date();
-        const timeTaken = moduleStartTime ? Math.floor((endTime - moduleStartTime) / 1000) : null;
-          
-      await submitModuleScore({
-        userId: currentUser.id,
-        moduleId: currentModule,
-        moduleName: modules[currentModule].title,
-        userName: currentUser.name,
-        userEmail: currentUser.email,
-        organization: currentUser.organization,
-        avatar: currentUser.avatar,
-        country: currentUser.country || 'Unknown',
-        gender: currentUser.gender || 'Prefer not to say',
-        score: moduleScore,
-        perfectCompletion: perfectModule,
-        completionTime: timeTaken
+    // Calculate completion time
+    const endTime = new Date();
+    const timeTaken = moduleStartTime 
+      ? Math.floor((endTime - moduleStartTime) / 1000) 
+      : null;
+    
+    // Calculate questions correct
+    const moduleQuestionKeys = Object.keys(answeredQuestions).filter(
+      key => key.startsWith(`${currentModule}-`)
+    );
+    const questionsCorrect = moduleQuestionKeys.filter(
+      key => answeredQuestions[key].wasCorrect
+    ).length;
+
+    // Track module completion
+    if (isGuest) {
+      trackGuestEvent('module_completed', {
+        score: finalModuleScore,
+        perfect: perfectModule,
+        timeSeconds: timeTaken,
+        moduleIndex: currentModule
       });
+    }
 
-      setShowModuleComplete(true);
-      setCompletedModules([...completedModules, currentModule]);
-      saveProgress();
-
-      // Submit to overall leaderboard after EACH module completion (not just when all are done)
-      await submitUserScore();
+    // Handle Module 1 completion for guest users
+    if (isGuest && currentModule === 0) {
+      setPendingModule1Completion({
+        score: finalModuleScore,
+        perfect: perfectModule,
+        timeTaken: timeTaken
+      });
       
-      if (currentModule < modules.length - 1 && !unlockedModules.includes(currentModule + 1)) {
-        setUnlockedModules([...unlockedModules, currentModule + 1]);
+      // Save guest progress
+      await saveGuestProgress({
+        currentModule,
+        currentQuestion,
+        score,
+        level,
+        xp,
+        completedModules: [...completedModules, currentModule],
+        answeredQuestions,
+        achievements: achievements.map(a => a.id),
+        powerUps,
+        streak,
+        combo,
+        perfectModulesCount: perfectModule ? perfectModulesCount + 1 : perfectModulesCount,
+        shuffledQuestions,
+        moduleScore: finalModuleScore,
+        perfectModule,
+        timeTaken
+      });
+      
+      setShowAuthModal(true);
+      trackGuestEvent('auth_modal_triggered', { trigger: 'module_1_completion' });
+      return;
+    }
+
+    // For authenticated users, submit to database
+    if (!isGuest && currentUser?.id) {
+      console.log(`🎯 Submitting Module ${currentModule} score...`);
+      
+      try {
+        // Submit module score
+        const moduleResult = await submitModuleScore(currentUser.id, {
+          moduleId: currentModule,
+          moduleName: modules[currentModule].title,
+          score: finalModuleScore,
+          perfectCompletion: perfectModule,
+          completionTime: timeTaken,
+          questionsAnswered: moduleQuestionKeys.length,
+          questionsCorrect: questionsCorrect
+        });
+
+        if (moduleResult.success) {
+          console.log(`✅ Module ${currentModule} score submitted successfully!`);
+        }
+        
+        // Update completed modules
+        const newCompletedModules = [...completedModules, currentModule];
+        setCompletedModules(newCompletedModules);
+        
+        // Save overall progress
+        await saveProgress();
+        
+      } catch (error) {
+        console.error(`❌ Error submitting module score:`, error);
       }
     }
-  }, 7000);
+
+    setShowModuleComplete(true);
+    setCompletedModules([...completedModules, currentModule]);
+    
+    if (currentModule < modules.length - 1 && 
+        !unlockedModules.includes(currentModule + 1)) {
+      setUnlockedModules([...unlockedModules, currentModule + 1]);
+    }
   };
   
+  // Handle power-up usage
   const handlePowerUp = (type) => {
     if (!canUsePowerUp(powerUps, type)) return;
     
@@ -230,7 +497,11 @@ const IFRS17TrainingGame = ({ onLogout }) => {
         const questionKey = `${currentModule}-${currentQuestion}`;
         setAnsweredQuestions({ 
           ...answeredQuestions, 
-          [questionKey]: { answered: true, selectedAnswer: null, wasCorrect: false } 
+          [questionKey]: { 
+            answered: true, 
+            selectedAnswer: null, 
+            wasCorrect: false 
+          } 
         });
         setPerfectModule(false);
         setCurrentQuestion(currentQuestion + 1);
@@ -238,6 +509,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   };
 
+  // Check achievement conditions
   const checkAchievementConditions = () => {
     const stats = createAchievementStats({
       score,
@@ -248,7 +520,11 @@ const IFRS17TrainingGame = ({ onLogout }) => {
       combo
     });
     
-    const newAchievements = getNewAchievements(achievements, stats, currentUser?.gender);
+    const newAchievements = getNewAchievements(
+      achievements, 
+      stats, 
+      currentUser?.gender
+    );
     
     if (newAchievements.length > 0) {
       const firstNewAchievement = newAchievements[0];
@@ -258,19 +534,32 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     }
   };
 
+  // Start new module
   const startNewModule = (moduleIndex) => {
+    // Prevent access to Module 2+ for guest users
+    if (isGuest && moduleIndex > 0) {
+      setShowAuthModal(true);
+      trackGuestEvent('auth_modal_triggered', { 
+        trigger: 'module_access_attempt', 
+        moduleIndex 
+      });
+      return;
+    }
+
     // Clear any previously answered questions for this module
     const updatedAnsweredQuestions = { ...answeredQuestions };
     const moduleQuestionCount = modules[moduleIndex]?.questions?.length || 0;
     
-    // Remove any existing answers for this module
     for (let i = 0; i < moduleQuestionCount; i++) {
       delete updatedAnsweredQuestions[`${moduleIndex}-${i}`];
     }
     
-    // Generate new shuffled questions for this module attempt
+    // Generate new shuffled questions
     const originalQuestions = modules[moduleIndex].questions;
-    const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ ...q, originalIndex: index })));
+    const shuffled = shuffleArray(originalQuestions.map((q, index) => ({ 
+      ...q, 
+      originalIndex: index 
+    })));
     setShuffledQuestions(prev => ({
       ...prev,
       [moduleIndex]: shuffled
@@ -285,206 +574,259 @@ const IFRS17TrainingGame = ({ onLogout }) => {
     setShowFeedback(false);
     setSelectedAnswer(null);
     setModuleStartTime(new Date());
+    setCurrentTime(0);
+
+    if (isGuest) {
+      trackGuestEvent('module_started', { moduleIndex });
+    }
   };
 
-  const submitUserScore = async () => {
-    console.log('🎯 Submitting user score to overall leaderboard...');
-    console.log('👤 Current User:', currentUser);
-    console.log('📊 Score Data:', {
-      score,
-      level,
-      achievements: achievements.length,
-      completedModules: completedModules.length,
-      perfectModules: perfectModulesCount
-    });
+  // Save progress (unified for both guest and authenticated users)
+  const saveProgress = async () => {
+    if (isSavingProgress) return; // Prevent concurrent saves
     
-    const userData = {
-      id: currentUser.id,
-      name: currentUser.name,
-      email: currentUser.email,
-      organization: currentUser.organization,
-      avatar: currentUser.avatar,
-      country: currentUser.country || 'Unknown',
-      gender: currentUser.gender || 'Prefer not to say',
+    setIsSavingProgress(true);
+    
+    const progressData = {
+      currentModule: currentModule,
+      currentQuestion: currentQuestion,
       score: score,
       level: level,
-      achievements: achievements.length,
-      modulesCompleted: completedModules.length,
-      perfectModules: perfectModulesCount
+      xp: xp,
+      streak: streak,
+      combo: combo,
+      perfectModulesCount: perfectModulesCount,
+      completedModules: completedModules,
+      unlockedModules: unlockedModules,
+      answeredQuestions: answeredQuestions,
+      achievements: achievements.map(a => a.id),
+      powerUps: powerUps,
+      shuffledQuestions: shuffledQuestions
     };
-    
-    const result = await submitToLeaderboard(userData);
-    
-    if (result.success) {
-      console.log('✅ Score submitted to overall leaderboard successfully!');
-    } else {
-      console.error('❌ Failed to submit score to overall leaderboard:', result.error);
-    }
-  };
 
-  const loadLeaderboardData = async (view = 'overall') => {
-    setIsLoadingLeaderboard(true);
+    let success = false;
     
     try {
-      let leaderboard;
-
-      if (view === 'overall') {
-        // Fetch overall leaderboard from Supabase
-        leaderboard = await getLeaderboard();
-      } else {
-        // Fetch module-specific leaderboard
-        leaderboard = await getModuleLeaderboard(view);
-      }      
-
-      // Add rank and mark current user
-      const rankedLeaderboard = leaderboard.map((user, index) => ({
-        ...user,
-        rank: index + 1,
-        isCurrentUser: user.user_id === currentUser.id,
-        // Map database fields to component fields
-        name: user.user_name,
-        id: user.user_id,
-        modulesCompleted: user.modules_completed || 0
-      }));
-      
-      setLeaderboardData(rankedLeaderboard);
-      setLeaderboardView(view);
+      if (isGuest) {
+        // Save guest progress to localStorage
+        success = saveGuestProgress(progressData);
+        console.log('💾 Guest progress saved to localStorage');
+      } else if (currentUser?.id) {
+        // Save authenticated user progress to database
+        const result = await saveGameProgress(currentUser.id, progressData);
+        success = result.success;
+        if (success) {
+          console.log('✅ Progress saved to database');
+        }
+      }
     } catch (error) {
-      console.error('Failed to load leaderboard:', error);
+      console.error('❌ Error saving progress:', error);
     } finally {
-      setIsLoadingLeaderboard(false);
+      setIsSavingProgress(false);
     }
-  };  
+    
+    return success;
+  };
 
-  // Update achievements with gender-based names when currentUser is loaded
-  useEffect(() => {
-    if (currentUser?.gender && achievements.length > 0) {
-      setAchievements(prevAchievements => 
-        prevAchievements.map(achievement => {
-          const originalAchievement = achievementsList.find(a => a.id === achievement.id);
-          if (originalAchievement?.genderBased) {
-            return {
-              ...achievement,
-              name: getGenderBasedAchievementName(originalAchievement, currentUser.gender),
-              icon: getGenderBasedAchievementIcon(originalAchievement, currentUser.gender)
-            };
-          }
-          return achievement;
-        })
-      );
+  // Reset progress
+  const resetProgress = async () => {
+    if (window.confirm(
+      '⚠️ Are you sure you want to reset all progress?\n\n' +
+      'This will delete:\n' +
+      '• Your score and level\n' +
+      '• All completed modules\n' +
+      '• All achievements\n' +
+      '• All answered questions\n\n' +
+      'This action cannot be undone!'
+    )) {
+      try {
+        if (!isGuest && currentUser?.id) {
+          await clearGameProgress(currentUser.id);
+        }
+        
+        // Reset all state
+        setCurrentModule(0);
+        setCurrentQuestion(0);
+        setScore(0);
+        setStreak(0);
+        setLevel(1);
+        setXp(0);
+        setUnlockedModules([0]);
+        setShowFeedback(false);
+        setSelectedAnswer(null);
+        setIsCorrect(false);
+        setAchievements([]);
+        setCombo(0);
+        setPowerUps(INITIAL_POWER_UPS);
+        setCompletedModules([]);
+        setAnsweredQuestions({});
+        setShowModuleComplete(false);
+        setModuleScore(0);
+        setPerfectModule(true);
+        setPerfectModulesCount(0);
+        setCompletedModuleScore(0);
+        setShowLevelUp(false);
+        setShowAchievement(null);
+        setModuleStartTime(null);
+        setShuffledQuestions({});
+        setCurrentTime(0);
+        
+        if (timerInterval.current) {
+          clearInterval(timerInterval.current);
+          timerInterval.current = null;
+        }
+        
+        console.log('✅ Progress reset successfully');
+      } catch (error) {
+        console.error('❌ Error resetting progress:', error);
+      }
     }
-  }, [currentUser?.gender, achievements.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
 
+  // Update these functions in IFRS17TrainingGame.js
+  const handleSignIn = async () => {
+    try {
+      setIsAuthenticating(true);
+      trackGuestEvent('auth_cta_clicked', { action: 'sign_in' });
+      
+      // Close the modal and let App.js handle showing AuthScreen
+      setShowAuthModal(false);
+      if (onShowAuth) {
+        await onShowAuth('signin');
+      }
+    } catch (error) {
+      console.error('Sign in error:', error);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleSignUp = async () => {
+    try {
+      setIsAuthenticating(true);
+      trackGuestEvent('auth_cta_clicked', { action: 'sign_up' });
+      
+      // Close the modal and let App.js handle showing AuthScreen
+      setShowAuthModal(false);
+      if (onShowAuth) {
+        await onShowAuth('signup');
+      }
+    } catch (error) {
+      console.error('Sign up error:', error);
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
+
+  const handleAuthModalClose = () => {
+    setShowAuthModal(false);
+    trackGuestEvent('auth_modal_closed', { action: 'dismissed' });
+    
+    if (pendingModule1Completion) {
+      setShowModuleComplete(true);
+      setCompletedModules([...completedModules, currentModule]);
+      
+      if (currentModule < modules.length - 1 && 
+          !unlockedModules.includes(currentModule + 1)) {
+        setUnlockedModules([...unlockedModules, currentModule + 1]);
+      }
+      
+      setPendingModule1Completion(null);
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+      if (onLogout) {
+        onLogout();
+      }
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
+  };
+
+  // Sync all data (for manual sync button)
+  const handleManualSync = async () => {
+    if (isGuest || !currentUser?.id) {
+      console.log('⚠️ Cannot sync: User not authenticated');
+      return;
+    }
+    
+    console.log('🔄 Manual sync triggered...');
+    
+    try {
+      // Prepare module scores
+      const moduleScores = {};
+      const perfectModules = [];
+      
+      completedModules.forEach(moduleIndex => {
+        // Calculate score for each module (you might want to track this separately)
+        const moduleQuestions = Object.keys(answeredQuestions).filter(
+          key => key.startsWith(`${moduleIndex}-`)
+        );
+        
+        let moduleCorrect = 0;
+        moduleQuestions.forEach(key => {
+          if (answeredQuestions[key].wasCorrect) moduleCorrect++;
+        });
+        
+        const isPerfect = moduleCorrect === moduleQuestions.length;
+        if (isPerfect) perfectModules.push(moduleIndex);
+        
+        // Estimate module score (you should track actual module scores)
+        moduleScores[moduleIndex] = Math.floor(score / completedModules.length);
+      });
+      
+      // Sync all game data
+      const syncResult = await syncAllGameData(currentUser.id, {
+        currentModule,
+        currentQuestion,
+        score,
+        level,
+        xp,
+        completedModules,
+        moduleScores,
+        perfectModules,
+        answeredQuestions,
+        achievements: achievements.map(a => a.id),
+        powerUps,
+        streak,
+        combo,
+        perfectModulesCount,
+        unlockedModules,
+        shuffledQuestions
+      });
+      
+      if (syncResult.success) {
+        console.log('✅ Manual sync completed successfully');
+        alert('Progress synced successfully!');
+      } else {
+        console.error('❌ Manual sync failed');
+        alert('Failed to sync progress. Please try again.');
+      }
+    } catch (error) {
+      console.error('❌ Error during manual sync:', error);
+      alert('An error occurred while syncing. Please try again.');
+    }
+  };
+
+  // Check achievements on state changes
   useEffect(() => {
     checkAchievementConditions();
-  }, [score, streak, level, combo, completedModules]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [score, streak, level, combo, completedModules]);
 
+  // Auto-save progress periodically
   useEffect(() => {
-    if (answeredQuestions && Object.keys(answeredQuestions).length > 0) {
-      saveProgress();
-    }
-  }, [answeredQuestions]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const saveProgress = async () => {
-    const success = await saveGameState({
-      currentModule,
-      currentQuestion,
-      score,
-      level,
-      xp,
-      completedModules,
-      answeredQuestions,
-      achievements,
-      powerUps,
-      streak,
-      combo,
-      perfectModulesCount,
-      shuffledQuestions,
-      moduleStartTime: currentModule !== null ? new Date().toISOString() : null 
-    });
-    
-    if (!success) {
-      console.error('Failed to save progress');
-    }
-  };
-
-  const resetProgress = async () => {
-    if (window.confirm('⚠️ Are you sure you want to reset all progress?\n\nThis will delete:\n• Your score and level\n• All completed modules\n• All achievements\n• All answered questions\n\nThis action cannot be undone!')) {
-      await clearGameState();
-      setCurrentModule(0);
-      setCurrentQuestion(0);
-      setScore(0);
-      setStreak(0);
-      setLevel(1);
-      setXp(0);
-      setUnlockedModules([0]);
-      setShowFeedback(false);
-      setSelectedAnswer(null);
-      setIsCorrect(false);
-      setAchievements([]);
-      setCombo(0);
-      setPowerUps(INITIAL_POWER_UPS);
-      setCompletedModules([]);
-      setAnsweredQuestions({});
-      setShowModuleComplete(false);
-      setModuleScore(0);
-      setPerfectModule(true);
-      setPerfectModulesCount(0);
-      setCompletedModuleScore(0);      
-      setShowLevelUp(false);
-      setShowAchievement(null);
-      setModuleStartTime(null);
-      setShuffledQuestions({});
-    }
-  };
-
-  // Load progress on mount
-  useEffect(() => {
-    const loadProgress = async () => {
-      // Only load progress after currentUser is set and storage user is configured
-      if (!currentUser) return;
-      
-      const savedState = await loadGameState();
-      if (savedState) {
-        setCurrentModule(savedState.currentModule || 0);
-        setCurrentQuestion(savedState.currentQuestion || 0);
-        setScore(savedState.score || 0);
-        setLevel(savedState.level || 1);
-        setXp(savedState.xp || 0);
-        setCompletedModules(savedState.completedModules || []);
-        setAnsweredQuestions(savedState.answeredQuestions || {});
-        setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
-        setStreak(savedState.streak || 0);
-        setCombo(savedState.combo || 0);
-        setPerfectModulesCount(savedState.perfectModulesCount || 0);
-        setShuffledQuestions(savedState.shuffledQuestions || {});
-
-        // If we're in the middle of a module, set the start time
-        if (savedState.currentModule !== null && !savedState.completedModules?.includes(savedState.currentModule)) {
-          setModuleStartTime(new Date());
-        }
-        // Restore achievements (will be updated with gender-based names in separate useEffect)     
-        const restoredAchievements = achievementsList.filter(a => 
-          savedState.achievements?.includes(a.id)
-        );
-        setAchievements(restoredAchievements);
-        
-        console.log('✅ Game progress loaded successfully');
-      } else {
-        console.log('ℹ️ No saved progress found, starting fresh');
+    const autoSaveInterval = setInterval(() => {
+      if (!isGuest && currentUser?.id && answeredQuestions && 
+          Object.keys(answeredQuestions).length > 0) {
+        saveProgress();
       }
-    };
+    }, 30000); // Auto-save every 30 seconds
     
-    loadProgress();
-  }, [currentUser]); // Depend on currentUser being loaded
-
-  const handleLogout = () => {
-    if (onLogout) {
-      onLogout();
-    } else {
-      console.log('Logout function not provided');
-    }
-  };
+    return () => clearInterval(autoSaveInterval);
+  }, [isGuest, currentUser, answeredQuestions]);
 
   // Don't render until currentUser is loaded
   if (!currentUser) {
@@ -498,40 +840,72 @@ const IFRS17TrainingGame = ({ onLogout }) => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-4">
       <div className="max-w-6xl mx-auto">
+        {/* Header with User Info */}
         <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-500 rounded-full flex items-center justify-center text-white font-bold">
-              {currentUser.avatar}
+              {currentUser.avatar || currentUser.name?.charAt(0).toUpperCase() || '?'}
             </div>
             <div>
-              <p className="text-white font-semibold text-sm md:text-base">{currentUser.name}</p>
+              <p className="text-white font-semibold text-sm md:text-base">
+                {currentUser.name}
+              </p>
               <p className="text-gray-400 text-xs">{currentUser.organization}</p>
             </div>
           </div>
-          <button
-            onClick={handleLogout}
-            className="text-gray-400 hover:text-white text-sm transition-colors"
-          >
-            Switch User
-          </button>
+          
+          {/* Auth CTAs */}
+          <div className="flex items-center gap-2">
+            {isGuest ? (
+              <>
+                <button
+                  onClick={handleSignIn}
+                  className="hidden sm:flex items-center gap-2 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-all text-sm"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign In</span>
+                </button>
+                <button
+                  onClick={handleSignUp}
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white px-3 py-1.5 rounded-lg transition-all text-sm font-medium"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Sign Up</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleLogout}
+                className="text-gray-400 hover:text-white text-sm transition-colors"
+              >
+                Switch User
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Title */}
         <div className="mb-6 relative">
           <img 
             src="/kenbright-logo.png" 
             alt="Kenbright Logo" 
-            className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-12 lg:h-16 w-auto z-10"
+            className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-16 lg:h-20 w-auto z-10"
           />
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
             IFRS 17 Quest and Concur: Regulatory Training Game
           </h1>
         </div>
+
+        {/* Stats Dashboard */}
         <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 mb-6 border border-white/10">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
             <div className="flex items-center gap-2">
               <Trophy className="text-yellow-400 w-6 h-6 md:w-8 md:h-8" />
               <div>
                 <p className="text-gray-400 text-xs md:text-sm">Score</p>
-                <p className="text-lg md:text-2xl font-bold text-white">{score.toLocaleString()}</p>
+                <p className="text-lg md:text-2xl font-bold text-white">
+                  {score.toLocaleString()}
+                </p>
               </div>
             </div>
             
@@ -565,29 +939,24 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
           </div>
         </div>
-          {/* Add Leaderboard Button - ADD THIS SECTION */}
-          <div className="mt-4 text-center">
-            <div className="flex flex-col sm:flex-row gap-2 justify-center">
+
+        {/* Leaderboard Actions */}
+        <div className="mt-4 text-center">
+          <div className="flex flex-col sm:flex-row gap-2 justify-center">
+            <button
+              onClick={() => setShowLeaderboard(true)}
+              className="group relative bg-black/30 backdrop-blur-sm border border-purple-400/30 hover:border-purple-400 text-white px-4 py-2 md:px-6 md:py-2 rounded-full font-medium transition-all transform hover:scale-105 inline-flex items-center gap-2 text-sm md:text-base"
+            >
+              <Trophy className="w-4 h-4 text-purple-400 group-hover:text-yellow-400 transition-colors" />
+              <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">
+                View Leaderboard
+              </span>
+              <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-600/20 to-pink-600/20 blur-lg group-hover:blur-xl transition-all opacity-0 group-hover:opacity-100"></div>
+            </button>
+            
+            {!isGuest && (
               <button
-                onClick={() => {
-                  loadLeaderboardData('overall');
-                  setShowLeaderboard(true);
-                }}
-                className="group relative bg-black/30 backdrop-blur-sm border border-purple-400/30 hover:border-purple-400 text-white px-4 py-2 md:px-6 md:py-2 rounded-full font-medium transition-all transform hover:scale-105 inline-flex items-center gap-2 text-sm md:text-base"
-              >
-                <Trophy className="w-4 h-4 text-purple-400 group-hover:text-yellow-400 transition-colors" />
-                <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent font-semibold">
-                  View Leaderboard
-                </span>
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-600/20 to-pink-600/20 blur-lg group-hover:blur-xl transition-all opacity-0 group-hover:opacity-100"></div>
-              </button>
-              
-              {/* Manual Sync Button */}
-              <button
-                onClick={async () => {
-                  console.log('🔄 Manual leaderboard sync triggered...');
-                  await submitUserScore();
-                }}
+                onClick={handleManualSync}
                 className="group relative bg-black/30 backdrop-blur-sm border border-green-400/30 hover:border-green-400 text-white px-4 py-2 md:px-6 md:py-2 rounded-full font-medium transition-all transform hover:scale-105 inline-flex items-center gap-2 text-sm md:text-base"
               >
                 <TrendingUp className="w-4 h-4 text-green-400 group-hover:text-green-300 transition-colors" />
@@ -596,10 +965,12 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 </span>
                 <div className="absolute inset-0 rounded-full bg-gradient-to-r from-green-600/20 to-emerald-600/20 blur-lg group-hover:blur-xl transition-all opacity-0 group-hover:opacity-100"></div>
               </button>
-            </div>
+            )}
           </div>
+        </div>
 
-        <div className="mb-8">
+        {/* Modules Grid */}
+        <div className="mb-8 mt-6">
           <h2 className="text-xl md:text-2xl font-bold text-white mb-4">
             IFRS 17 Training Modules 
             <span className="text-sm md:text-lg font-normal text-gray-300 ml-2 md:ml-4">
@@ -607,52 +978,66 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </span>
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-            {modules.map((module, index) => (
-              <button
-                key={index}
-                onClick={() => {
-                  if (unlockedModules.includes(index) && 
-                      !completedModules.includes(index) && 
-                      index !== currentModule) {
-                    // console.log(`Starting new module: ${module.title}`);
-                    startNewModule(index);
-                  } else {
-                    // console.log(`Cannot start module ${index}: 
-                    //   Unlocked: ${unlockedModules.includes(index)}, 
-                    //   Completed: ${completedModules.includes(index)}, 
-                    //   Current: ${index === currentModule}`);
-                  }
-                }}
-                disabled={!unlockedModules.includes(index) || completedModules.includes(index) || (index === currentModule && !showModuleComplete)}
-                className={`relative p-3 md:p-4 rounded-xl transition-all duration-300 ${
-                  completedModules.includes(index)
-                    ? 'bg-gradient-to-br from-green-600 to-green-700 transform cursor-not-allowed shadow-lg ring-2 ring-green-400'
-                    : index === currentModule && !completedModules.includes(index)
-                    ? `bg-gradient-to-br ${module.color} transform scale-105 shadow-xl ring-2 ring-purple-400`
-                    : unlockedModules.includes(index)
-                    ? `bg-gradient-to-br ${module.color} hover:scale-105 transform cursor-pointer shadow-lg`
-                    : 'bg-gray-800 opacity-50 cursor-not-allowed'
-                }`}
-              >
-                {completedModules.includes(index) && (
-                  <CheckCircle className="absolute top-1 right-1 md:top-2 md:right-2 w-4 h-4 md:w-6 md:h-6 text-white" />
-                )}
-                {!unlockedModules.includes(index) && (
-                  <Lock className="absolute top-1 right-1 md:top-2 md:right-2 w-3 h-3 md:w-4 md:h-4 text-gray-500" />
-                )}
-                <div className="text-2xl md:text-3xl mb-1 md:mb-2">{module.icon}</div>
-                <p className="text-white text-xs md:text-sm font-semibold">{module.title}</p>
-                {completedModules.includes(index) && (
-                  <p className="text-xs text-green-200 mt-1">Completed!</p>
-                )}
-                {index === currentModule && !completedModules.includes(index) && (
-                  <p className="text-xs text-yellow-200 mt-1">In Progress</p>
-                )}
-              </button>
-            ))}
+            {modules.map((module, index) => {
+              const isLocked = !unlockedModules.includes(index) || (isGuest && index > 0);
+              const isCompleted = completedModules.includes(index);
+              const isCurrent = index === currentModule && !completedModules.includes(index);
+              
+              return (
+                <button
+                  key={index}
+                  onClick={() => {
+                    if (isGuest && index > 0) {
+                      setShowAuthModal(true);
+                      trackGuestEvent('auth_modal_triggered', { 
+                        trigger: 'module_click', 
+                        moduleIndex: index 
+                      });
+                    } else if (unlockedModules.includes(index) && 
+                        !completedModules.includes(index) && 
+                        index !== currentModule) {
+                      startNewModule(index);
+                    }
+                  }}
+                  disabled={(isLocked && !isGuest) || 
+                           completedModules.includes(index) || 
+                           (index === currentModule && !showModuleComplete)}
+                  className={`relative p-3 md:p-4 rounded-xl transition-all duration-300 ${
+                    isCompleted
+                      ? 'bg-gradient-to-br from-green-600 to-green-700 transform cursor-not-allowed shadow-lg ring-2 ring-green-400'
+                      : isCurrent
+                      ? `bg-gradient-to-br ${module.color} transform scale-105 shadow-xl ring-2 ring-purple-400`
+                      : (unlockedModules.includes(index) && !(isGuest && index > 0))
+                      ? `bg-gradient-to-br ${module.color} hover:scale-105 transform cursor-pointer shadow-lg`
+                      : 'bg-gray-800 opacity-50 cursor-pointer hover:opacity-70'
+                  }`}
+                >
+                  {isCompleted && (
+                    <CheckCircle className="absolute top-1 right-1 md:top-2 md:right-2 w-4 h-4 md:w-6 md:h-6 text-white" />
+                  )}
+                  {(isLocked || (isGuest && index > 0)) && (
+                    <Lock className="absolute top-1 right-1 md:top-2 md:right-2 w-3 h-3 md:w-4 md:h-4 text-gray-300" />
+                  )}
+                  <div className="text-2xl md:text-3xl mb-1 md:mb-2">{module.icon}</div>
+                  <p className="text-white text-xs md:text-sm font-semibold">
+                    {module.title}
+                  </p>
+                  {isCompleted && (
+                    <p className="text-xs text-green-200 mt-1">Completed!</p>
+                  )}
+                  {isCurrent && (
+                    <p className="text-xs text-yellow-200 mt-1">In Progress</p>
+                  )}
+                  {isGuest && index > 0 && (
+                    <p className="text-xs text-gray-300 mt-1">Sign up to unlock</p>
+                  )}
+                </button>
+              );
+            })}
           </div>
         </div>
 
+        {/* Achievement Notification */}
         {showAchievement && (
           <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
             <div className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white px-6 py-4 rounded-full text-lg font-bold animate-pulse flex items-center gap-3">
@@ -662,6 +1047,7 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         )}
 
+        {/* Level Up Notification */}
         {showLevelUp && (
           <div className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-50">
             <div className="bg-purple-600 text-white px-8 py-4 rounded-full text-2xl font-bold animate-pulse">
@@ -670,12 +1056,17 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         )}
 
+        {/* Module Complete Modal */}
         {showModuleComplete && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50">
             <div className="bg-gradient-to-br from-purple-600 to-pink-600 p-8 rounded-2xl text-center transform scale-110 animate-pulse">
               <Trophy className="w-24 h-24 text-yellow-400 mx-auto mb-4" />
-              <h2 className="text-4xl font-bold text-white mb-4">Module Complete! 🎉</h2>
-              <p className="text-2xl text-white mb-2">{modules[currentModule].title}</p>
+              <h2 className="text-4xl font-bold text-white mb-4">
+                Module Complete! 🎉
+              </h2>
+              <p className="text-2xl text-white mb-2">
+                {modules[currentModule].title}
+              </p>
               <p className="text-xl text-yellow-300 mb-4">
                 Score: {completedModuleScore} points
               </p>
@@ -690,18 +1081,17 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   : "Congratulations! You've completed all modules!"}
               </p>
               {currentModule < modules.length - 1 ? (
-              <button
-                onClick={() => {
-                  setShowModuleComplete(false);
-                  // Small delay to ensure modal closes before starting new module
-                  setTimeout(() => {
-                    startNewModule(currentModule + 1);
-                  }, 100);
-                }}
-                className="mt-4 px-6 py-3 bg-white text-purple-600 rounded-full font-bold hover:bg-gray-100 transition-all transform hover:scale-105"
-              >
-                Start Next Module →
-              </button>
+                <button
+                  onClick={() => {
+                    setShowModuleComplete(false);
+                    setTimeout(() => {
+                      startNewModule(currentModule + 1);
+                    }, 100);
+                  }}
+                  className="mt-4 px-6 py-3 bg-white text-purple-600 rounded-full font-bold hover:bg-gray-100 transition-all transform hover:scale-105"
+                >
+                  Start Next Module →
+                </button>
               ) : (
                 <button
                   onClick={() => {
@@ -716,49 +1106,65 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         )}
 
-        {modules[currentModule] && completedModules.length < modules.length && !completedModules.includes(currentModule) && (
+        {/* Question Display (rest of your game UI remains the same) */}
+        {modules[currentModule] && completedModules.length < modules.length && 
+         !completedModules.includes(currentModule) && (
           <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 border border-white/10">
             <div className="mb-6">
               <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
                 <h3 className="text-lg md:text-xl font-bold text-white">
-                  {modules[currentModule].title} - Question {currentQuestion + 1}/{getShuffledQuestions(currentModule).length}
+                  {modules[currentModule].title} - Question {currentQuestion + 1}/
+                  {getShuffledQuestions(currentModule).length}
                 </h3>
-                <div className="flex gap-2">
-                  {Object.entries(powerUps).map(([type, count]) => (
-                    <div key={type} className="relative group">
-                      <button
-                        onClick={() => handlePowerUp(type)}
-                        disabled={count === 0}
-                        className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
-                          count > 0 
-                            ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                            : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                        }`}
-                      >
-                        {getPowerUpInfo(type)?.icon}
-                        {count}
-                      </button>
-                      {/* Tooltip */}
-                      <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block z-50">
-                        <div className="bg-black/90 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs whitespace-nowrap border border-white/20">
-                          <div className="font-semibold">{getPowerUpInfo(type)?.name}</div>
-                          <div className="text-gray-300 mt-1">{getPowerUpInfo(type)?.description}</div>
-                          <div className="text-xs text-purple-300 mt-1">
-                            {count > 0 ? `${count} remaining` : 'None left'}
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-400/30">
+                    <Clock className="w-4 h-4 text-blue-400 animate-pulse" />
+                    <span className="text-blue-400 font-mono text-sm md:text-base font-semibold">
+                      {formatTime(currentTime)}
+                    </span>
+                  </div>
+                  
+                  <div className="flex gap-2">
+                    {Object.entries(powerUps).map(([type, count]) => (
+                      <div key={type} className="relative group">
+                        <button
+                          onClick={() => handlePowerUp(type)}
+                          disabled={count === 0}
+                          className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
+                            count > 0 
+                              ? 'bg-purple-600 hover:bg-purple-700 text-white' 
+                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
+                          }`}
+                        >
+                          {getPowerUpInfo(type)?.icon}
+                          {count}
+                        </button>
+                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block z-50">
+                          <div className="bg-black/90 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs whitespace-nowrap border border-white/20">
+                            <div className="font-semibold">
+                              {getPowerUpInfo(type)?.name}
+                            </div>
+                            <div className="text-gray-300 mt-1">
+                              {getPowerUpInfo(type)?.description}
+                            </div>
+                            <div className="text-xs text-purple-300 mt-1">
+                              {count > 0 ? `${count} remaining` : 'None left'}
+                            </div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45 border-r border-b border-white/20"></div>
                           </div>
-                          {/* Tooltip arrow */}
-                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45 border-r border-b border-white/20"></div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
               
               <div className="w-full h-2 bg-gray-700 rounded-full overflow-hidden mb-4">
                 <div 
                   className="h-full bg-gradient-to-r from-blue-400 to-purple-400 transition-all duration-500"
-                  style={{ width: `${((currentQuestion + 1) / getShuffledQuestions(currentModule).length) * 100}%` }}
+                  style={{ 
+                    width: `${((currentQuestion + 1) / getShuffledQuestions(currentModule).length) * 100}%` 
+                  }}
                 />
               </div>
               
@@ -768,7 +1174,9 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                     key={idx}
                     className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all ${
                       answeredQuestions[`${currentModule}-${idx}`]?.answered
-                        ? answeredQuestions[`${currentModule}-${idx}`]?.wasCorrect ? 'bg-green-400' : 'bg-red-400'
+                        ? answeredQuestions[`${currentModule}-${idx}`]?.wasCorrect 
+                          ? 'bg-green-400' 
+                          : 'bg-red-400'
                         : idx === currentQuestion
                         ? 'bg-purple-400 ring-2 ring-purple-300'
                         : 'bg-gray-600'
@@ -781,7 +1189,8 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                 {getShuffledQuestions(currentModule)[currentQuestion]?.question}
               </p>
               
-              {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && !showFeedback && (
+              {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && 
+               !showFeedback && (
                 <div className="bg-yellow-500/20 border border-yellow-400 rounded-lg p-3 mb-4">
                   <p className="text-yellow-300 text-center text-sm md:text-base mb-2">
                     ⚠️ You've already answered this question.
@@ -803,11 +1212,19 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {getShuffledQuestions(currentModule)[currentQuestion]?.options.map((option, index) => (
+              {getShuffledQuestions(currentModule)[currentQuestion]?.options.map(
+                (option, index) => (
                 <button
                   key={index}
-                  onClick={() => !showFeedback && !answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && handleAnswer(index)}
-                  disabled={showFeedback || answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered}
+                  onClick={() => 
+                    !showFeedback && 
+                    !answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && 
+                    handleAnswer(index)
+                  }
+                  disabled={
+                    showFeedback || 
+                    answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered
+                  }
                   className={`p-3 md:p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-102 text-sm md:text-base ${
                     answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered
                       ? answeredQuestions[`${currentModule}-${currentQuestion}`]?.selectedAnswer === index
@@ -829,7 +1246,9 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                   <div className="flex items-center justify-between">
                     <span className="font-medium">{option}</span>
                     {showFeedback && selectedAnswer === index && (
-                      isCorrect ? <CheckCircle className="w-4 h-4 md:w-5 md:h-5" /> : <XCircle className="w-4 h-4 md:w-5 md:h-5" />
+                      isCorrect ? 
+                        <CheckCircle className="w-4 h-4 md:w-5 md:h-5" /> : 
+                        <XCircle className="w-4 h-4 md:w-5 md:h-5" />
                     )}
                     {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && (
                       answeredQuestions[`${currentModule}-${currentQuestion}`]?.selectedAnswer === index ? (
@@ -847,10 +1266,16 @@ const IFRS17TrainingGame = ({ onLogout }) => {
 
             {showFeedback && (
               <div className={`mt-6 p-4 rounded-xl ${
-                isCorrect ? 'bg-green-500/20 border border-green-400' : 'bg-blue-500/20 border border-blue-400'
+                isCorrect 
+                  ? 'bg-green-500/20 border border-green-400' 
+                  : 'bg-blue-500/20 border border-blue-400'
               }`}>
-                <p className={`${isCorrect ? 'text-green-400' : 'text-blue-400'} font-semibold mb-2 text-sm md:text-base`}>
-                  {isCorrect ? `🎉 Excellent! +${10 * (combo)} points` : 'Not quite right, but here\'s the explanation:'}
+                <p className={`${
+                  isCorrect ? 'text-green-400' : 'text-blue-400'
+                } font-semibold mb-2 text-sm md:text-base`}>
+                  {isCorrect 
+                    ? `🎉 Excellent! +${10 * (combo)} points` 
+                    : 'Not quite right, but here\'s the explanation:'}
                   {isCorrect && combo >= 3 && ' 🔥 COMBO!'}
                   {isCorrect && streak >= 5 && ' ⚡ STREAK!'}
                 </p>
@@ -862,24 +1287,39 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         )}
 
+        {/* All Modules Complete */}
         {completedModules.length === modules.length && (
           <div className="bg-gradient-to-br from-yellow-500/20 to-purple-500/20 backdrop-blur-md rounded-2xl p-8 mb-6 border border-yellow-400/50 text-center">
             <Award className="w-20 h-20 text-yellow-400 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold text-white mb-4">🎊 Congratulations! 🎊</h2>
-            <p className="text-xl text-white mb-2">You've completed all IFRS 17 Training Modules!</p>
-            <p className="text-lg text-yellow-300">Final Score: {score.toLocaleString()} points</p>
-            <p className="text-lg text-purple-300">Level: {level} | Achievements: {achievements.length}</p>
+            <h2 className="text-3xl font-bold text-white mb-4">
+              🎊 Congratulations! 🎊
+            </h2>
+            <p className="text-xl text-white mb-2">
+              You've completed all IFRS 17 Training Modules!
+            </p>
+            <p className="text-lg text-yellow-300">
+              Final Score: {score.toLocaleString()} points
+            </p>
+            <p className="text-lg text-purple-300">
+              Level: {level} | Achievements: {achievements.length}
+            </p>
           </div>
         )}
 
+        {/* Achievements Display */}
         {achievements.length > 0 && (
           <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10">
-            <h3 className="text-xl font-bold text-white mb-4">Achievements Unlocked</h3>
+            <h3 className="text-xl font-bold text-white mb-4">
+              Achievements Unlocked
+            </h3>
             <div className="flex flex-wrap gap-3">
               {achievements.map((achievement) => {
                 const displayData = getAchievementDisplayData(achievement);
                 return (
-                  <div key={achievement.id} className="bg-white/10 rounded-lg p-3 flex items-center gap-2">
+                  <div 
+                    key={achievement.id} 
+                    className="bg-white/10 rounded-lg p-3 flex items-center gap-2"
+                  >
                     <span className="text-2xl">{displayData.icon}</span>
                     <span className="text-white font-medium">{displayData.name}</span>
                   </div>
@@ -888,223 +1328,20 @@ const IFRS17TrainingGame = ({ onLogout }) => {
             </div>
           </div>
         )}
+
         {/* Leaderboard Modal */}
-        {showLeaderboard && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <div className="bg-gradient-to-br from-gray-900 to-blue-900 rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden border border-white/10">
-              <div className="p-6 md:p-8">
-                {/* Header */}
-                <div className="flex justify-between items-center mb-6">
-                  <div className="flex items-center gap-3">
-                    <Trophy className="w-8 h-8 text-yellow-400" />
-                    <h2 className="text-2xl md:text-3xl font-bold text-white">
-                      {leaderboardView === 'overall' ? 'Grand Leaderboard' : `${modules[leaderboardView]?.title} Leaderboard`}
-                    </h2>
-                  </div>
-                  <button
-                    onClick={() => setShowLeaderboard(false)}
-                    className="text-gray-400 hover:text-white transition-colors"
-                  >
-                    <XCircle className="w-6 h-6" />
-                  </button>
-                </div>
+        <LeaderboardModal
+          isOpen={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+          currentUser={currentUser}
+          modules={modules}
+          userScore={score}
+          userLevel={level}
+          userAchievements={achievements.length}
+          userCompletedModules={completedModules}
+        />
 
-                {/* Leaderboard Tabs */}
-                <div className="mb-6 overflow-x-auto">
-                  <div className="flex gap-2 min-w-max pb-2">
-                    <button
-                      onClick={() => loadLeaderboardData('overall')}
-                      className={`px-4 py-2 rounded-lg font-medium transition-all ${
-                        leaderboardView === 'overall'
-                          ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                          : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                      }`}
-                    >
-                      🏆 Grand Total
-                    </button>
-                    <div className="w-px bg-white/20 mx-2"></div>
-                    {modules.map((module, index) => (
-                      <button
-                        key={index}
-                        onClick={() => loadLeaderboardData(index)}
-                        className={`px-3 py-2 rounded-lg font-medium transition-all flex items-center gap-2 text-sm ${
-                          leaderboardView === index
-                            ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
-                            : 'bg-white/10 text-gray-300 hover:bg-white/20'
-                        }`}
-                      >
-                        <span className="text-lg">{module.icon}</span>
-                        <span className="hidden md:inline">{module.title}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Loading State */}
-                {isLoadingLeaderboard ? (
-                  <div className="flex items-center justify-center h-64">
-                    <div className="text-white text-lg">Loading leaderboard...</div>
-                  </div>
-                ) : leaderboardData.length === 0 ? (
-                  <div className="text-center py-8">
-                    <p className="text-gray-400">
-                      {leaderboardView === 'overall' 
-                        ? 'No scores yet. Be the first to complete the training!'
-                        : 'No one has completed this module yet. Be the first!'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    {/* Current User Position */}
-                    {leaderboardData.find(user => user.isCurrentUser) && (
-                      <div className="bg-purple-600/20 border border-purple-400/50 rounded-lg p-4 mb-6">
-                        <p className="text-purple-300 text-sm mb-1">Your Position</p>
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl font-bold text-white">
-                              #{leaderboardData.find(user => user.isCurrentUser).rank}
-                            </span>
-                            <span className="text-white font-semibold">{currentUser.name}</span>
-                          </div>
-                          <div className="text-right">
-                            <span className="text-yellow-400 font-bold">
-                              {leaderboardView === 'overall' 
-                                ? score.toLocaleString() 
-                                : (leaderboardData.find(user => user.isCurrentUser)?.score || 0).toLocaleString()} points
-                            </span>
-                            {leaderboardView !== 'overall' && leaderboardData.find(user => user.isCurrentUser)?.perfect_completion && (
-                              <p className="text-xs text-green-400 mt-1">⭐ Perfect Score</p>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Leaderboard Table */}
-                    <div className="leaderboard-scroll overflow-y-auto max-h-[45vh] pr-2">
-                      <div className="space-y-2">
-                        {leaderboardData.map((user, index) => (
-                          <div
-                            key={user.id}
-                            className={`rounded-lg p-4 transition-all ${
-                              user.isCurrentUser
-                                ? 'bg-gradient-to-r from-purple-600/30 to-pink-600/30 border border-purple-400/50'
-                                : 'bg-white/5 hover:bg-white/10 border border-white/10'
-                            }`}
-                          >
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-4">
-                                {/* Rank Badge */}
-                                <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
-                                  user.rank === 1 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' :
-                                  user.rank === 2 ? 'bg-gradient-to-br from-gray-300 to-gray-400 text-gray-800' :
-                                  user.rank === 3 ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white' :
-                                  'bg-gray-700 text-gray-300'
-                                }`}>
-                                  {user.rank <= 3 ? '🏆' : user.rank}
-                                </div>
-                                
-                              {/* User Info */}
-                              <div className="flex items-center gap-3">
-                                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${
-                                  user.isCurrentUser ? 'bg-gradient-to-br from-purple-500 to-pink-500' : 'bg-gradient-to-br from-blue-500 to-indigo-500'
-                                }`}>
-                                  {user.avatar}
-                                </div>
-                                <div>
-                                  <p className="text-white font-semibold flex items-center gap-2">
-                                    {user.name}
-                                    {user.isCurrentUser && <span className="text-xs bg-purple-600 px-2 py-1 rounded-full">You</span>}
-                                    {leaderboardView !== 'overall' && user.perfect_completion && (
-                                      <span className="text-xs bg-green-600 px-2 py-1 rounded-full">Perfect</span>
-                                    )}
-                                  </p>
-                                  <div className="flex items-center gap-3 text-sm">
-                                    <p className="text-gray-400">{user.organization}</p>
-                                    {user.country && (
-                                      <>
-                                        <span className="text-gray-600">•</span>
-                                        <p className="text-gray-400">🌍 {user.country}</p>
-                                      </>
-                                    )}
-                                  </div>
-                                </div>
-                               </div> 
-                              </div>                              
-                              {/* Stats */}
-                              <div className="flex items-center gap-6">
-                                <div className="text-right">
-                                  <p className="text-yellow-400 font-bold text-lg">{user.score.toLocaleString()}</p>
-                                  <p className="text-gray-400 text-xs">points</p>
-                                </div>
-                                <div className="text-center">
-                                  <p className="text-orange-400 font-semibold">{user.modulesCompleted || 0}</p>
-                                  <p className="text-gray-500 text-xs">Modules</p>
-                                </div>
-                                {leaderboardView !== 'overall' && user.completion_time && (
-                                  <div className="text-center">
-                                    <p className="text-cyan-400 font-semibold">{formatTime(user.completion_time)}</p>
-                                    <p className="text-gray-500 text-xs">Time</p>
-                                  </div>
-                                )}
-                                {leaderboardView === 'overall' && (
-                                  <div className="hidden md:flex items-center gap-4">
-                                    <div className="text-center">
-                                      <p className="text-purple-400 font-semibold">{user.level}</p>
-                                      <p className="text-gray-500 text-xs">Level</p>
-                                    </div>
-                                    <div className="text-center">
-                                      <p className="text-green-400 font-semibold">{user.achievements}</p>
-                                      <p className="text-gray-500 text-xs">Awards</p>
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Footer Stats */}
-                    <div className="mt-6 grid grid-cols-3 gap-4">
-                      <div className="bg-white/5 rounded-lg p-4 text-center">
-                        <p className="text-gray-400 text-sm mb-1">Total Players</p>
-                        <p className="text-2xl font-bold text-white">{leaderboardData.length}</p>
-                      </div>
-                      <div className="bg-white/5 rounded-lg p-4 text-center">
-                        <p className="text-gray-400 text-sm mb-1">Your Percentile</p>
-                        <p className="text-2xl font-bold text-purple-400">
-                          {leaderboardData.find(u => u.isCurrentUser) 
-                            ? `Top ${Math.round((leaderboardData.find(u => u.isCurrentUser)?.rank / leaderboardData.length) * 100)}%`
-                            : 'N/A'}
-                        </p>
-                      </div>
-                      <div className="bg-white/5 rounded-lg p-4 text-center">
-                        <p className="text-gray-400 text-sm mb-1">
-                          {leaderboardView === 'overall' ? 'Points to Next' : 'Module Leader'}
-                        </p>
-                        <p className="text-2xl font-bold text-yellow-400">
-                          {(() => {
-                            if (leaderboardView === 'overall') {
-                              const currentRank = leaderboardData.find(u => u.isCurrentUser)?.rank;
-                              if (!currentRank) return 'N/A';
-                              if (currentRank === 1) return '👑';
-                              const nextUser = leaderboardData[currentRank - 2];
-                              return nextUser ? `+${(nextUser.score - score).toLocaleString()}` : '-';
-                            } else {
-                              return leaderboardData[0]?.name || '-';
-                            }
-                          })()}
-                        </p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Reset Progress Button */}
         <div className="mt-6 text-center">
           <button
             onClick={resetProgress}
@@ -1114,13 +1351,19 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </button>
         </div>
 
-        {/* Endorsed By Section */}
+        {/* Saving Indicator */}
+        {isSavingProgress && (
+          <div className="fixed bottom-4 right-4 bg-blue-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2">
+            <div className="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></div>
+            <span>Saving progress...</span>
+          </div>
+        )}
+
+        {/* Footer sections remain the same */}
         <div className="mt-6 mb-4">
           <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-lg endorsed-section">
             <div className="flex flex-col items-center justify-center space-y-4">
               <span className="text-sm text-gray-300 font-medium">Endorsed by</span>
-              
-              {/* Logo Container */}
               <div className="relative group">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-blue-400/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500 logo-glow"></div>
                 <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl p-4 transform transition-all duration-300 hover:scale-105 logo-container border border-white/20">
@@ -1131,7 +1374,6 @@ const IFRS17TrainingGame = ({ onLogout }) => {
                       className="h-10 w-20 object-contain logo-image filter drop-shadow-2xl brightness-110 contrast-125"
                       onError={(e) => {
                         e.target.style.display = 'none';
-                        e.target.nextSibling.style.display = 'flex';
                       }}
                     />
                   </div>
@@ -1141,16 +1383,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         </div>
 
-        {/* Professional Footer Section */}
         <footer className="mt-6 mb-4">
           <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/10">
             <div className="flex flex-col items-center gap-2 md:gap-4">
-              {/* Powered By Section */}
               <div className="flex items-center gap-1 md:gap-2">
-                <span className="text-gray-300 text-xs md:text-sm font-light">Powered by Kenbright AI</span>
+                <span className="text-gray-300 text-xs md:text-sm font-light">
+                  Powered by Kenbright AI
+                </span>
               </div>
-              
-              {/* Additional Info */}
               <div className="text-center">
                 <p className="text-gray-300 text-xs">
                   © {new Date().getFullYear()} Kenbright. All rights reserved.  
@@ -1163,6 +1403,14 @@ const IFRS17TrainingGame = ({ onLogout }) => {
           </div>
         </footer>
 
+        {/* Authentication Modal */}
+        <AuthenticationModal 
+          isOpen={showAuthModal}
+          onClose={handleAuthModalClose}
+          onSignIn={handleSignIn}
+          onSignUp={handleSignUp}
+          isLoading={isAuthenticating}
+        />
       </div>
     </div>
   );
