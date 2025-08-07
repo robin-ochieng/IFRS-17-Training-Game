@@ -40,7 +40,7 @@ const verifyPassword = (password, hash) => {
 // Generate session token
 const generateSessionToken = (userId) => {
   const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 11);
+  const random = Math.random().toString(36).substr(2, 9);
   return btoa(`${userId}_${timestamp}_${random}`);
 };
 
@@ -77,7 +77,7 @@ export const signUpUser = async ({
     }
 
     // Create user ID
-    const userId = `user_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     const avatar = name.charAt(0).toUpperCase();
     const passwordHash = hashPassword(password);
 
@@ -289,6 +289,8 @@ export const setCurrentUserSession = (user, session = null) => {
 // Sign out current user - Enhanced
 export const signOut = async () => {
   try {
+    const user = getCurrentAuthUser();
+    
     // Clear all auth-related storage
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -478,7 +480,7 @@ export const getUserById = async (userId) => {
 
 // Create guest user (for playing without account)
 export const createGuestUser = () => {
-  const guestId = `guest_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+  const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const guestUser = {
     id: guestId,
     name: 'Guest Player',
@@ -653,7 +655,7 @@ export const deleteAccount = async (userId, password) => {
 };
 
 // Export all functions as default for convenience
-const authService = {
+export default {
   signUpUser,
   signInUser,
   getCurrentAuthUser,
@@ -671,5 +673,3 @@ const authService = {
   validateSession,
   deleteAccount
 };
-
-export default authService;
