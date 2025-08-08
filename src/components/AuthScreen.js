@@ -160,6 +160,15 @@ const AuthScreen = ({ onLogin }) => {
         />
       </div>
       
+      {/* Quest & Conquer logo in top-right corner */}
+      <div className="absolute top-4 right-4">
+        <img 
+          src="/Quest & Conquer.png" 
+          alt="Quest & Conquer Logo" 
+          className="h-24 w-auto"
+        />
+      </div>
+      
       <div className="w-full max-w-md">
         {/* Title */}
         <div className="text-center mb-8">
@@ -391,7 +400,7 @@ const AuthScreen = ({ onLogin }) => {
                   © {new Date().getFullYear()} Kenbright. All rights reserved.
                 </p>
                 <p className="text-gray-400 text-xs mt-1">
-                  Version 2.0.0 | IFRS 17 Training Platform
+                  Version 3.0.0 | IFRS 17 Training Platform
                 </p>
               </div>
             </div>

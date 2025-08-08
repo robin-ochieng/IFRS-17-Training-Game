@@ -72,6 +72,7 @@ function App() {
   // Show game for authenticated users
   return (
     <IFRS17TrainingGame 
+      currentUser={currentUser}
       onLogout={handleLogout}
       onShowAuth={handleShowAuth}
     />

@@ -40,7 +40,7 @@ const AuthenticationModal = ({
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-gray-300">
                 <Star className="w-4 h-4 text-yellow-400" />
-                <span>Access to all 5 training modules</span>
+                <span>Access to all 9 training modules</span>
               </li>
               <li className="flex items-center gap-2 text-gray-300">
                 <Trophy className="w-4 h-4 text-purple-400" />

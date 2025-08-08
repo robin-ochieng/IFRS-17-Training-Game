@@ -48,10 +48,10 @@ import {
 import { saveGameState, loadGameState, setStorageUser } from './modules/storageService';
 
 
-const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
-  // User state
-  const [currentUser, setCurrentUser] = useState(null);
-  const [isGuest, setIsGuest] = useState(false);
+const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) => {
+  // User state - use props user primarily
+  const [currentUser, setCurrentUser] = useState(propsUser);
+  const [isGuest, setIsGuest] = useState(!propsUser || propsUser.isGuest);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingModule1Completion, setPendingModule1Completion] = useState(null);
@@ -113,8 +113,49 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
     return shuffledQuestions[moduleIndex];
   };
   
-  // Load current user on component mount
+  // Handle user prop changes (authentication state changes)
   useEffect(() => {
+    console.log('User prop effect triggered:', { propsUser, currentUser: currentUser?.id });
+    
+    if (propsUser && propsUser !== currentUser) {
+      console.log('User prop changed, updating user state:', propsUser);
+      setCurrentUser(propsUser);
+      setIsGuest(!propsUser || propsUser.isGuest);
+      setStorageUser(propsUser.id);
+      
+      // If this is a newly authenticated user (not guest), load their progress
+      if (!propsUser.isGuest) {
+        console.log('Loading progress for authenticated user:', propsUser.id);
+        loadUserProgress(propsUser.id);
+        
+        // Clear any pending module completion since they're now authenticated
+        if (pendingModule1Completion) {
+          console.log('Handling pending module completion for authenticated user');
+          // Complete module 1 and unlock module 2 for authenticated users
+          const newCompletedModules = [...completedModules];
+          if (!newCompletedModules.includes(0)) {
+            newCompletedModules.push(0);
+          }
+          const newUnlockedModules = [...unlockedModules];
+          if (!newUnlockedModules.includes(1)) {
+            newUnlockedModules.push(1);
+          }
+          
+          setCompletedModules(newCompletedModules);
+          setUnlockedModules(newUnlockedModules);
+          setPendingModule1Completion(null);
+        }
+      }
+    }
+  }, [propsUser, currentUser?.id]); // Only depend on propsUser and currentUser.id to avoid infinite loops
+
+  // Load current user on component mount (only if no user prop provided)
+  useEffect(() => {
+    // If user is provided as prop, don't load from storage
+    if (propsUser) {
+      return;
+    }
+    
     const loadUser = async () => {
       try {
         // Try to get authenticated user from props or auth service
@@ -200,7 +241,7 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
     };
     
     loadUser();
-  }, []);
+  }, [propsUser]);
 
   // Load user progress from database
   const loadUserProgress = async (userId) => {
@@ -230,9 +271,25 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
         setAchievements(restoredAchievements);
         
         console.log('✅ Progress loaded from database');
+      } else {
+        // No saved progress for authenticated user - set up default state with all modules unlocked
+        console.log('No saved progress found for authenticated user, unlocking modules');
+        
+        // For authenticated users, unlock modules based on their completion status
+        // If they have pending module 1 completion, make sure they have access to module 2
+        const defaultUnlocked = [0]; // Always have module 0 unlocked
+        if (pendingModule1Completion) {
+          defaultUnlocked.push(1); // Unlock module 2 if they completed module 1
+        }
+        
+        setUnlockedModules(defaultUnlocked);
+        setCompletedModules(pendingModule1Completion ? [0] : []);
       }
     } catch (error) {
       console.error('❌ Error loading progress:', error);
+      
+      // On error, ensure authenticated users have basic access
+      setUnlockedModules([0, 1]); // At minimum, unlock modules 0 and 1 for authenticated users
     }
   };
 
@@ -848,9 +905,9 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
             </div>
             <div>
               <p className="text-white font-semibold text-sm md:text-base">
-                {currentUser.name}
+                {currentUser?.name || 'Loading...'}
               </p>
-              <p className="text-gray-400 text-xs">{currentUser.organization}</p>
+              <p className="text-gray-400 text-xs">{currentUser?.organization || ''}</p>
             </div>
           </div>
           
@@ -1359,19 +1416,22 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
           </div>
         )}
 
-        {/* Footer sections remain the same */}
         <div className="mt-6 mb-4">
-          <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-lg endorsed-section">
+          <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl">
             <div className="flex flex-col items-center justify-center space-y-4">
-              <span className="text-sm text-gray-300 font-medium">Endorsed by</span>
+              <span className="text-sm text-gray-300 font-medium tracking-wide">Endorsed by</span>
+              
               <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-400/20 via-purple-400/20 to-blue-400/20 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-all duration-500 logo-glow"></div>
-                <div className="relative bg-white/10 backdrop-blur-sm rounded-2xl p-4 transform transition-all duration-300 hover:scale-105 logo-container border border-white/20">
+                {/* Optional glow ring */}
+                <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-400/30 group-hover:ring-purple-400/40 transition-all duration-500 pointer-events-none"></div>
+                
+                {/* Logo Container */}
+                <div className="relative bg-white/10 backdrop-blur-md rounded-2xl p-4 transition-transform duration-300 transform hover:scale-105 border border-white/20 shadow-md">
                   <div className="flex flex-col items-center space-y-2">
                     <img 
                       src="/IRA logo.png" 
                       alt="IRA Logo" 
-                      className="h-10 w-20 object-contain logo-image filter drop-shadow-2xl brightness-110 contrast-125"
+                      className="h-14 w-auto object-contain brightness-110 contrast-125 drop-shadow-lg transition-all duration-300 hover:brightness-125"
                       onError={(e) => {
                         e.target.style.display = 'none';
                       }}
@@ -1382,6 +1442,7 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
             </div>
           </div>
         </div>
+
 
         <footer className="mt-6 mb-4">
           <div className="bg-black/20 backdrop-blur-sm rounded-2xl p-4 md:p-6 border border-white/10">
@@ -1396,7 +1457,7 @@ const IFRS17TrainingGame = ({ onLogout, onShowAuth }) => {
                   © {new Date().getFullYear()} Kenbright. All rights reserved.  
                 </p>
                 <p className="text-gray-300 text-xs mt-1">
-                  Version 1.0.0 | IFRS 17 Training Platform
+                  Version 3.0.0 | IFRS 17 Training Platform
                 </p>
               </div>
             </div>
