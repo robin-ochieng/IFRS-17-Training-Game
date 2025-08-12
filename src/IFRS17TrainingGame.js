@@ -88,6 +88,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [shuffledQuestions, setShuffledQuestions] = useState({});
   const [currentTime, setCurrentTime] = useState(0);
   const [isSavingProgress, setIsSavingProgress] = useState(false);
+  const [timerState, setTimerState] = useState('idle'); // 'idle' | 'running' | 'stopped'
+  const [elapsedTime, setElapsedTime] = useState(0);
   const timerInterval = useRef(null);
   
   // Fisher-Yates shuffle algorithm
@@ -394,13 +396,77 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Timer useEffect
+  // Timer management functions
+  const startTimer = () => {
+    if (timerState !== 'idle') return;
+    
+    console.log('🕐 Starting quiz timer for first answer');
+    const startTime = new Date();
+    setModuleStartTime(startTime);
+    setTimerState('running');
+    setCurrentTime(0);
+    setElapsedTime(0);
+    
+    // Store start time in sessionStorage to survive refresh
+    sessionStorage.setItem(`timer_start_${currentModule}`, startTime.toISOString());
+    sessionStorage.setItem(`timer_state_${currentModule}`, 'running');
+  };
+
+  const stopTimer = () => {
+    if (timerState !== 'running') return;
+    
+    console.log('🛑 Stopping quiz timer after final answer');
+    setTimerState('stopped');
+    
+    // Calculate final elapsed time
+    if (moduleStartTime) {
+      const finalElapsed = Math.floor((new Date() - moduleStartTime) / 1000);
+      setElapsedTime(finalElapsed);
+      setCurrentTime(finalElapsed);
+      
+      // Store final time in sessionStorage
+      sessionStorage.setItem(`timer_elapsed_${currentModule}`, finalElapsed.toString());
+      sessionStorage.setItem(`timer_state_${currentModule}`, 'stopped');
+    }
+    
+    // Clear interval
+    if (timerInterval.current) {
+      clearInterval(timerInterval.current);
+      timerInterval.current = null;
+    }
+  };
+
+  const resetTimer = () => {
+    console.log('🔄 Resetting timer to idle state');
+    setTimerState('idle');
+    setModuleStartTime(null);
+    setCurrentTime(0);
+    setElapsedTime(0);
+    
+    if (timerInterval.current) {
+      clearInterval(timerInterval.current);
+      timerInterval.current = null;
+    }
+    
+    // Clear sessionStorage
+    sessionStorage.removeItem(`timer_start_${currentModule}`);
+    sessionStorage.removeItem(`timer_state_${currentModule}`);
+    sessionStorage.removeItem(`timer_elapsed_${currentModule}`);
+  };
+
+  // Get total questions in current module
+  const getTotalQuestions = () => {
+    return getShuffledQuestions(currentModule)?.length || 0;
+  };
+
+  // Updated Timer useEffect - only runs when timer is in 'running' state
   useEffect(() => {
-    if (moduleStartTime && !completedModules.includes(currentModule)) {
+    if (timerState === 'running' && moduleStartTime && !completedModules.includes(currentModule)) {
       const interval = setInterval(() => {
         const now = new Date();
         const elapsed = Math.floor((now - moduleStartTime) / 1000);
         setCurrentTime(elapsed);
+        setElapsedTime(elapsed);
       }, 1000);
       
       timerInterval.current = interval;
@@ -410,22 +476,57 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         timerInterval.current = null;
       };
     } else {
+      // Clear timer if not running
       if (timerInterval.current) {
         clearInterval(timerInterval.current);
         timerInterval.current = null;
       }
-      setCurrentTime(0);
     }
-  }, [moduleStartTime, currentModule, completedModules]);
+  }, [timerState, moduleStartTime, currentModule, completedModules]);
 
-  // Initialize timer for fresh starts
+  // Restore timer state from sessionStorage on component mount/module change
   useEffect(() => {
-    if (currentUser && currentModule !== null && 
-        !completedModules.includes(currentModule) && !moduleStartTime) {
-      setModuleStartTime(new Date());
-      setCurrentTime(0);
+    if (currentUser && currentModule !== null && !completedModules.includes(currentModule)) {
+      const savedState = sessionStorage.getItem(`timer_state_${currentModule}`);
+      const savedStartTime = sessionStorage.getItem(`timer_start_${currentModule}`);
+      const savedElapsed = sessionStorage.getItem(`timer_elapsed_${currentModule}`);
+      
+      if (savedState === 'running' && savedStartTime) {
+        // Restore running timer
+        const startTime = new Date(savedStartTime);
+        const currentElapsed = Math.floor((new Date() - startTime) / 1000);
+        setModuleStartTime(startTime);
+        setTimerState('running');
+        setCurrentTime(currentElapsed);
+        setElapsedTime(currentElapsed);
+        console.log('🔄 Restored running timer from sessionStorage');
+      } else if (savedState === 'stopped' && savedElapsed) {
+        // Restore stopped timer
+        const elapsed = parseInt(savedElapsed);
+        setTimerState('stopped');
+        setCurrentTime(elapsed);
+        setElapsedTime(elapsed);
+        console.log('🔄 Restored stopped timer from sessionStorage');
+      } else {
+        // Fresh start - timer remains idle
+        setTimerState('idle');
+        setCurrentTime(0);
+        setElapsedTime(0);
+        console.log('⏸️ Timer initialized in idle state');
+      }
     }
-  }, [currentUser, currentModule, completedModules, moduleStartTime]);
+  }, [currentUser, currentModule, completedModules]);
+
+  // Cleanup timer on component unmount
+  useEffect(() => {
+    return () => {
+      if (timerInterval.current) {
+        clearInterval(timerInterval.current);
+        timerInterval.current = null;
+        console.log('🧹 Cleaned up timer interval on unmount');
+      }
+    };
+  }, []);
 
   // Get achievement display data
   const getAchievementDisplayData = (achievement) => {
@@ -444,6 +545,11 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const handleAnswer = (answerIndex) => {
     const questionKey = `${currentModule}-${currentQuestion}`;
     if (answeredQuestions[questionKey]?.answered) return;
+    
+    // START TIMER: Only when user submits first answer in the module
+    if (timerState === 'idle' && currentQuestion === 0) {
+      startTimer();
+    }
     
     setSelectedAnswer(answerIndex);
     const currentModuleQuestions = getShuffledQuestions(currentModule);
@@ -486,6 +592,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     // Save progress after each answer
     saveProgress();
 
+    // STOP TIMER: Immediately if this is the final question
+    const totalQuestions = getTotalQuestions();
+    const isLastQuestion = currentQuestion === totalQuestions - 1;
+    
+    if (isLastQuestion) {
+      stopTimer();
+    }
+
     setTimeout(async () => {
       if (currentQuestion < currentModuleQuestions.length - 1) {
         setCurrentQuestion(currentQuestion + 1);
@@ -511,11 +625,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       setPerfectModulesCount(prev => prev + 1);
     }
 
-    // Calculate completion time
-    const endTime = new Date();
-    const timeTaken = moduleStartTime 
-      ? Math.floor((endTime - moduleStartTime) / 1000) 
-      : null;
+    // Use the final elapsed time from timer (timer should already be stopped)
+    const timeTaken = elapsedTime || currentTime || 0;
+    console.log(`⏱️ Module completed in ${timeTaken} seconds`);
     
     // Calculate questions correct
     const moduleQuestionKeys = Object.keys(answeredQuestions).filter(
@@ -726,8 +838,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     setPowerUps(prev => refreshPowerUps(prev));
     setShowFeedback(false);
     setSelectedAnswer(null);
-    setModuleStartTime(new Date());
-    setCurrentTime(0);
+    
+    // RESET TIMER: Don't start timer until first answer
+    resetTimer();
 
     // Track module start
     if (isGuest) {
@@ -1285,11 +1398,24 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
                   {getShuffledQuestions(currentModule).length}
                 </h3>
                 <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2 bg-black/30 backdrop-blur-sm rounded-lg px-3 py-2 border border-blue-400/30">
-                    <Clock className="w-4 h-4 text-blue-400 animate-pulse" />
-                    <span className="text-blue-400 font-mono text-sm md:text-base font-semibold">
-                      {formatTime(currentTime)}
+                  <div className={`flex items-center gap-2 backdrop-blur-sm rounded-lg px-3 py-2 border transition-all ${
+                    timerState === 'idle' 
+                      ? 'bg-gray-700/30 border-gray-500/30 text-gray-400' 
+                      : timerState === 'running'
+                      ? 'bg-blue-900/30 border-blue-400/30 text-blue-400'
+                      : 'bg-green-900/30 border-green-400/30 text-green-400'
+                  }`}>
+                    <Clock className={`w-4 h-4 ${
+                      timerState === 'running' ? 'animate-pulse' : ''
+                    }`} />
+                    <span className="font-mono text-sm md:text-base font-semibold">
+                      {timerState === 'idle' ? '0:00' : formatTime(currentTime)}
                     </span>
+                    {timerState === 'idle' && (
+                      <span className="text-xs opacity-75 ml-1">
+                        (starts on first answer)
+                      </span>
+                    )}
                   </div>
                   
                   <div className="flex gap-2">
@@ -1530,7 +1656,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       <div className="mt-6 mb-4">
         <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl">
           <div className="flex flex-col items-center justify-center space-y-4">
-            <span className="text-sm text-gray-300 font-medium tracking-wide">Endorsed by</span>
+            <span className="text-sm text-gray-300 font-medium tracking-wide">Developed for</span>
 
             {/* Logos Row */}
             <div className="flex flex-row items-center justify-center gap-6">
