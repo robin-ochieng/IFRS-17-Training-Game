@@ -25,7 +25,12 @@ const AuthenticationModal = ({
         {/* Content */}
         <div className="text-center">
           <div className="mb-6">
-            <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
+              <img
+                src="/Quest & Conquer.png"
+                alt="Quest & Conquer Logo"
+                className="w-16 h-16 object-contain mx-auto mb-4"
+                onError={(e) => { e.target.style.display = 'none'; }}
+              />
             <h2 className="text-3xl font-bold text-white mb-2">
               Unlock All Modules! 🎮
             </h2>
