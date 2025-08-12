@@ -1,8 +1,10 @@
 //src/modules/guestUserService.js
 // Guest User Service for Delayed Authentication
 
-const GUEST_USER_KEY = 'ifrs17_guest_user';
-const GUEST_PROGRESS_KEY = 'ifrs17_guest_progress';
+import { GAME_CONFIG } from '../config/gameConfig';
+
+const GUEST_USER_KEY = GAME_CONFIG.STORAGE_KEYS.GUEST_USER;
+const GUEST_PROGRESS_KEY = GAME_CONFIG.STORAGE_KEYS.GUEST_PROGRESS;
 
 export const createGuestUser = () => {
   const guestId = `guest_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -18,6 +20,13 @@ export const createGuestUser = () => {
   };
   
   localStorage.setItem(GUEST_USER_KEY, JSON.stringify(guestUser));
+  
+  // Track guest session start
+  trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.GUEST_SESSION_STARTED, {
+    guestId: guestId,
+    timestamp: new Date().toISOString()
+  });
+  
   return guestUser;
 };
 
@@ -73,29 +82,89 @@ export const migrateGuestToAuthenticatedUser = async (authenticatedUser, gameSta
     const guestProgress = getGuestProgress();
     
     if (guestProgress && authenticatedUser) {
-      // Set storage user for authenticated user
-      gameStateService.setStorageUser(authenticatedUser.id);
+      console.log('🔄 Migrating guest progress to authenticated user:', authenticatedUser.id);
       
-      // Save the guest progress as authenticated user progress
-      const success = await gameStateService.saveGameState({
+      // Set storage user for authenticated user
+      if (gameStateService && gameStateService.setStorageUser) {
+        gameStateService.setStorageUser(authenticatedUser.id);
+      }
+      
+      // Prepare merged progress data
+      const mergedProgress = {
         ...guestProgress,
         migratedFromGuest: true,
-        migrationTimestamp: new Date().toISOString()
-      });
+        migrationTimestamp: new Date().toISOString(),
+        originalGuestId: getGuestUser()?.id,
+        // Ensure Module 2 is unlocked for authenticated users
+        unlockedModules: [...new Set([...guestProgress.unlockedModules, 1])]
+      };
+      
+      // Save the guest progress as authenticated user progress
+      let success = false;
+      if (gameStateService && gameStateService.saveGameState) {
+        success = await gameStateService.saveGameState(mergedProgress);
+      }
       
       if (success) {
+        // Track successful migration
+        trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.GUEST_PROGRESS_MERGED, {
+          guestId: getGuestUser()?.id,
+          authenticatedUserId: authenticatedUser.id,
+          migratedModules: guestProgress.completedModules || [],
+          migratedScore: guestProgress.score || 0,
+          migrationTimestamp: new Date().toISOString()
+        });
+        
         // Clear guest data after successful migration
         clearGuestData();
         console.log('✅ Successfully migrated guest progress to authenticated user');
-        return true;
+        
+        // Track Module 2 unlock
+        trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.MODULE2_UNLOCKED_POST_AUTH, {
+          userId: authenticatedUser.id,
+          unlockedAfterMigration: true
+        });
+        
+        return { success: true, mergedProgress };
       }
     }
     
-    return false;
+    return { success: false, error: 'No guest progress to migrate' };
   } catch (error) {
     console.error('❌ Error migrating guest progress:', error);
-    return false;
+    
+    // Track failed migration
+    trackGuestEvent('guest_migration_failed', {
+      guestId: getGuestUser()?.id,
+      authenticatedUserId: authenticatedUser?.id,
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+    
+    return { success: false, error: error.message };
   }
+};
+
+// New function to check if guest has completed Module 1
+export const hasGuestCompletedModule1 = () => {
+  const guestProgress = getGuestProgress();
+  return guestProgress?.completedModules?.includes(0) || false;
+};
+
+// New function to get guest Module 1 completion details
+export const getGuestModule1Completion = () => {
+  const guestProgress = getGuestProgress();
+  if (!guestProgress || !guestProgress.completedModules?.includes(0)) {
+    return null;
+  }
+  
+  return {
+    completed: true,
+    score: guestProgress.moduleScore || guestProgress.score || 0,
+    perfect: guestProgress.perfectModule || false,
+    timeTaken: guestProgress.timeTaken || null,
+    completionTimestamp: guestProgress.lastUpdated || new Date().toISOString()
+  };
 };
 
 // Analytics tracking functions

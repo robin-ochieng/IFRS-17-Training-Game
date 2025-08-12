@@ -64,12 +64,12 @@ function App() {
     );
   }
 
-  // Show auth screen if no user or explicitly showing auth
-  if (!currentUser || showAuth) {
+  // Show auth screen only if explicitly requested (not for missing currentUser)
+  if (showAuth) {
     return <AuthScreen onLogin={handleLogin} />;
   }
 
-  // Show game for authenticated users
+  // Show game for all users (authenticated or guest will be determined in the game component)
   return (
     <IFRS17TrainingGame 
       currentUser={currentUser}

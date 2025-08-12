@@ -1,4 +1,4 @@
-// IFRS17TrainingGame.js - Updated with new leaderboard system
+// IFRS17TrainingGame.js - Updated with deferred authentication
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, 
@@ -24,8 +24,12 @@ import {
   getGuestUser, 
   saveGuestProgress, 
   getGuestProgress,
-  trackGuestEvent 
+  trackGuestEvent,
+  migrateGuestToAuthenticatedUser,
+  hasGuestCompletedModule1,
+  getGuestModule1Completion
 } from './modules/guestUserService';
+import { GAME_CONFIG } from './config/gameConfig';
 import AuthenticationModal from './components/AuthenticationModal';
 import LeaderboardModal from './modules/LeaderboardModal';
 
@@ -49,9 +53,9 @@ import { saveGameState, loadGameState, setStorageUser } from './modules/storageS
 
 
 const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) => {
-  // User state - use props user primarily
-  const [currentUser, setCurrentUser] = useState(propsUser);
-  const [isGuest, setIsGuest] = useState(!propsUser || propsUser.isGuest);
+  // User state - Always start in guest mode unless authenticated user is provided
+  const [currentUser, setCurrentUser] = useState(null);
+  const [isGuest, setIsGuest] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [pendingModule1Completion, setPendingModule1Completion] = useState(null);
@@ -115,50 +119,134 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   
   // Handle user prop changes (authentication state changes)
   useEffect(() => {
-    console.log('User prop effect triggered:', { propsUser, currentUser: currentUser?.id });
+    console.log('User prop effect triggered:', { propsUser, currentUserId: currentUser?.id });
     
-    if (propsUser && propsUser !== currentUser) {
-      console.log('User prop changed, updating user state:', propsUser);
+    if (propsUser && propsUser !== currentUser && !propsUser.isGuest) {
+      console.log('Authenticated user provided, transitioning from guest:', propsUser);
       setCurrentUser(propsUser);
-      setIsGuest(!propsUser || propsUser.isGuest);
+      setIsGuest(false);
       setStorageUser(propsUser.id);
       
-      // If this is a newly authenticated user (not guest), load their progress
-      if (!propsUser.isGuest) {
-        console.log('Loading progress for authenticated user:', propsUser.id);
-        loadUserProgress(propsUser.id);
-        
-        // Clear any pending module completion since they're now authenticated
-        if (pendingModule1Completion) {
-          console.log('Handling pending module completion for authenticated user');
-          // Complete module 1 and unlock module 2 for authenticated users
-          const newCompletedModules = [...completedModules];
-          if (!newCompletedModules.includes(0)) {
-            newCompletedModules.push(0);
-          }
-          const newUnlockedModules = [...unlockedModules];
-          if (!newUnlockedModules.includes(1)) {
-            newUnlockedModules.push(1);
-          }
-          
-          setCompletedModules(newCompletedModules);
-          setUnlockedModules(newUnlockedModules);
-          setPendingModule1Completion(null);
-        }
-      }
+      // Handle guest progress migration
+      handleGuestToAuthenticatedTransition(propsUser);
+      
+    } else if (!propsUser && (GAME_CONFIG?.ENABLE_DEFERRED_AUTH ?? true)) {
+      // No authenticated user provided and deferred auth is enabled - initialize guest mode
+      // Default to true if config is not loaded
+      initializeGuestMode();
     }
-  }, [propsUser, currentUser?.id]); // Only depend on propsUser and currentUser.id to avoid infinite loops
+  }, [propsUser]);
 
-  // Load current user on component mount (only if no user prop provided)
+  // Initialize guest mode for deferred authentication
+  const initializeGuestMode = () => {
+    console.log('🎮 Initializing guest mode for deferred authentication');
+    
+    try {
+      let guestUser = getGuestUser();
+      if (!guestUser) {
+        guestUser = createGuestUser();
+        console.log('📝 Created new guest user:', guestUser.id);
+      } else {
+        console.log('🔄 Loading existing guest user:', guestUser.id);
+        trackGuestEvent('guest_user_loaded', { guestId: guestUser.id });
+      }
+      
+      setCurrentUser(guestUser);
+      setIsGuest(true);
+      setStorageUser(guestUser.id);
+      
+      // Load guest progress
+      loadGuestProgressData();
+    } catch (error) {
+      console.error('❌ Error initializing guest mode:', error);
+      
+      // Fallback: create minimal guest user
+      const fallbackGuest = {
+        id: `guest_fallback_${Date.now()}`,
+        name: 'Guest User',
+        avatar: 'G',
+        isGuest: true
+      };
+      
+      setCurrentUser(fallbackGuest);
+      setIsGuest(true);
+      
+      trackGuestEvent('guest_initialization_error', { 
+        error: error.message,
+        fallbackUsed: true
+      });
+    }
+  };
+
+  // Handle transition from guest to authenticated user
+  const handleGuestToAuthenticatedTransition = async (authenticatedUser) => {
+    console.log('🔄 Handling guest to authenticated user transition');
+    
+    try {
+      // Attempt to migrate guest progress
+      const migrationResult = await migrateGuestToAuthenticatedUser(
+        authenticatedUser,
+        { saveGameState, setStorageUser }
+      );
+      
+      if (migrationResult.success) {
+        console.log('✅ Guest progress successfully migrated');
+        
+        // Apply migrated progress to current state
+        const mergedProgress = migrationResult.mergedProgress;
+        if (mergedProgress) {
+          setCurrentModule(mergedProgress.currentModule || 0);
+          setCurrentQuestion(mergedProgress.currentQuestion || 0);
+          setScore(mergedProgress.score || 0);
+          setLevel(mergedProgress.level || 1);
+          setXp(mergedProgress.xp || 0);
+          setStreak(mergedProgress.streak || 0);
+          setCombo(mergedProgress.combo || 0);
+          setPerfectModulesCount(mergedProgress.perfectModulesCount || 0);
+          setCompletedModules(mergedProgress.completedModules || []);
+          setUnlockedModules(mergedProgress.unlockedModules || [0, 1]);
+          setAnsweredQuestions(mergedProgress.answeredQuestions || {});
+          setPowerUps(mergedProgress.powerUps || INITIAL_POWER_UPS);
+          setShuffledQuestions(mergedProgress.shuffledQuestions || {});
+          
+          // Restore achievements
+          const restoredAchievements = achievementsList.filter(a => 
+            mergedProgress.achievements?.includes(a.id)
+          );
+          setAchievements(restoredAchievements);
+        }
+        
+        // Clear any pending module completion since it's now merged
+        setPendingModule1Completion(null);
+        
+      } else {
+        console.log('⚠️ No guest progress to migrate, loading authenticated user progress');
+        // Load authenticated user progress from database
+        loadUserProgress(authenticatedUser.id);
+      }
+    } catch (error) {
+      console.error('❌ Error during guest to authenticated transition:', error);
+      // Fallback: load authenticated user progress
+      loadUserProgress(authenticatedUser.id);
+    }
+  };
+
+  // Load current user on component mount (deferred auth logic)
   useEffect(() => {
-    // If user is provided as prop, don't load from storage
-    if (propsUser) {
+    // If authenticated user is provided as prop, handle it in the prop effect
+    if (propsUser && !propsUser.isGuest) {
       return;
     }
     
+    // For deferred authentication, always start in guest mode
+    if ((GAME_CONFIG?.ENABLE_DEFERRED_AUTH ?? true) && !propsUser) {
+      initializeGuestMode();
+      return;
+    }
+    
+    // Legacy behavior: try to load authenticated user (fallback)
     const loadUser = async () => {
       try {
-        // Try to get authenticated user from props or auth service
         const authenticatedUser = await getCurrentUser();
         
         if (authenticatedUser && !authenticatedUser.isGuest) {
@@ -168,80 +256,20 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           trackGuestEvent('authenticated_user_loaded', { userId: authenticatedUser.id });
           
           // Load saved progress from database
-          const savedProgress = await loadGameState();
-          if (savedProgress) {
-            // Restore all game state
-            setCurrentModule(savedProgress.currentModule || 0);
-            setCurrentQuestion(savedProgress.currentQuestion || 0);
-            setScore(savedProgress.score || 0);
-            setLevel(savedProgress.level || 1);
-            setXp(savedProgress.xp || 0);
-            setStreak(savedProgress.streak || 0);
-            setCombo(savedProgress.combo || 0);
-            setPerfectModulesCount(savedProgress.perfectModulesCount || 0);
-            setCompletedModules(savedProgress.completedModules || []);
-            setUnlockedModules(savedProgress.unlockedModules || [0]);
-            setAnsweredQuestions(savedProgress.answeredQuestions || {});
-            setPowerUps(savedProgress.powerUps || INITIAL_POWER_UPS);
-            setShuffledQuestions(savedProgress.shuffledQuestions || {});
-            
-            const restoredAchievements = achievementsList.filter(a => 
-              savedProgress.achievements?.includes(a.id)
-            );
-            setAchievements(restoredAchievements);
-          }
+          loadUserProgress(authenticatedUser.id);
         } else {
-          // Create or load guest user
-          let guestUser = getGuestUser();
-          if (!guestUser) {
-            guestUser = createGuestUser();
-            trackGuestEvent('guest_user_created', { guestId: guestUser.id });
-          } else {
-            trackGuestEvent('guest_user_loaded', { guestId: guestUser.id });
-          }
-          
-          setCurrentUser(guestUser);
-          setIsGuest(true);
-          setStorageUser(guestUser.id);
-          
-          // Load guest progress from localStorage
-          const savedState = getGuestProgress();
-          if (savedState) {
-            setCurrentModule(savedState.currentModule || 0);
-            setCurrentQuestion(savedState.currentQuestion || 0);
-            setScore(savedState.score || 0);
-            setLevel(savedState.level || 1);
-            setXp(savedState.xp || 0);
-            setCompletedModules(savedState.completedModules || []);
-            setAnsweredQuestions(savedState.answeredQuestions || {});
-            setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
-            setStreak(savedState.streak || 0);
-            setCombo(savedState.combo || 0);
-            setPerfectModulesCount(savedState.perfectModulesCount || 0);
-            setShuffledQuestions(savedState.shuffledQuestions || {});
-            
-            const restoredAchievements = achievementsList.filter(a => 
-              savedState.achievements?.includes(a.id)
-            );
-            setAchievements(restoredAchievements);
-          }
+          // Fall back to guest mode
+          initializeGuestMode();
         }
       } catch (error) {
         console.error('Error loading user:', error);
-        // Create guest user on error
-        const guestUser = createGuestUser();
-        trackGuestEvent('guest_user_created_on_error', { 
-          guestId: guestUser.id, 
-          error: error.message 
-        });
-        setCurrentUser(guestUser);
-        setIsGuest(true);
-        setStorageUser(guestUser.id);
+        // Fall back to guest mode
+        initializeGuestMode();
       }
     };
     
     loadUser();
-  }, [propsUser]);
+  }, []); // Only run once on mount
 
   // Load user progress from database
   const loadUserProgress = async (userId) => {
@@ -295,28 +323,66 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
 
   // Load guest progress from localStorage
   const loadGuestProgressData = () => {
-    const savedState = getGuestProgress();
-    
-    if (savedState) {
-      setCurrentModule(savedState.currentModule || 0);
-      setCurrentQuestion(savedState.currentQuestion || 0);
-      setScore(savedState.score || 0);
-      setLevel(savedState.level || 1);
-      setXp(savedState.xp || 0);
-      setCompletedModules(savedState.completedModules || []);
-      setAnsweredQuestions(savedState.answeredQuestions || {});
-      setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
-      setStreak(savedState.streak || 0);
-      setCombo(savedState.combo || 0);
-      setPerfectModulesCount(savedState.perfectModulesCount || 0);
-      setShuffledQuestions(savedState.shuffledQuestions || {});
+    try {
+      const savedState = getGuestProgress();
       
-      const restoredAchievements = achievementsList.filter(a => 
-        savedState.achievements?.includes(a.id)
-      );
-      setAchievements(restoredAchievements);
+      if (savedState) {
+        console.log('📂 Loading guest progress from localStorage');
+        
+        // Restore game state with fallbacks
+        setCurrentModule(savedState.currentModule || 0);
+        setCurrentQuestion(savedState.currentQuestion || 0);
+        setScore(savedState.score || 0);
+        setLevel(savedState.level || 1);
+        setXp(savedState.xp || 0);
+        setCompletedModules(savedState.completedModules || []);
+        setAnsweredQuestions(savedState.answeredQuestions || {});
+        setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+        setStreak(savedState.streak || 0);
+        setCombo(savedState.combo || 0);
+        setPerfectModulesCount(savedState.perfectModulesCount || 0);
+        setShuffledQuestions(savedState.shuffledQuestions || {});
+        
+        // For guest users, only unlock Module 1 by default
+        const guestUnlockedModules = [0];
+        setUnlockedModules(guestUnlockedModules);
+        
+        // Restore achievements safely
+        try {
+          const restoredAchievements = achievementsList.filter(a => 
+            savedState.achievements?.includes(a.id)
+          );
+          setAchievements(restoredAchievements);
+        } catch (achievementError) {
+          console.warn('⚠️ Error restoring achievements:', achievementError);
+          setAchievements([]);
+        }
+        
+        console.log('✅ Guest progress loaded successfully');
+      } else {
+        console.log('📭 No existing guest progress found, starting fresh');
+        // Ensure fresh guest state
+        setUnlockedModules([0]); // Only Module 1 unlocked for guests
+        setCompletedModules([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading guest progress:', error);
       
-      console.log('✅ Guest progress loaded from localStorage');
+      // Fallback to safe defaults
+      setCurrentModule(0);
+      setCurrentQuestion(0);
+      setScore(0);
+      setLevel(1);
+      setXp(0);
+      setUnlockedModules([0]);
+      setCompletedModules([]);
+      setAnsweredQuestions({});
+      setPowerUps(INITIAL_POWER_UPS);
+      setAchievements([]);
+      
+      trackGuestEvent('guest_progress_load_error', { 
+        error: error.message 
+      });
     }
   };
 
@@ -469,22 +535,25 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       });
     }
 
-    // Handle Module 1 completion for guest users
-    if (isGuest && currentModule === 0) {
+    // Handle Module 1 completion for guest users with deferred authentication
+    if (isGuest && currentModule === 0 && (GAME_CONFIG?.ENABLE_DEFERRED_AUTH ?? true)) {
+      console.log('🎯 Module 1 completed by guest user - triggering deferred auth');
+      
       setPendingModule1Completion({
         score: finalModuleScore,
         perfect: perfectModule,
         timeTaken: timeTaken
       });
       
-      // Save guest progress
+      // Save guest progress including Module 1 completion
+      const updatedCompletedModules = [...completedModules, currentModule];
       await saveGuestProgress({
         currentModule,
         currentQuestion,
         score,
         level,
         xp,
-        completedModules: [...completedModules, currentModule],
+        completedModules: updatedCompletedModules,
         answeredQuestions,
         achievements: achievements.map(a => a.id),
         powerUps,
@@ -497,8 +566,29 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         timeTaken
       });
       
-      setShowAuthModal(true);
-      trackGuestEvent('auth_modal_triggered', { trigger: 'module_1_completion' });
+      // Update local state to show Module 1 as completed
+      setCompletedModules(updatedCompletedModules);
+      
+      // Track Module 1 completion by guest
+      trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.MODULE1_COMPLETED_GUEST, {
+        score: finalModuleScore,
+        perfect: perfectModule,
+        timeSeconds: timeTaken,
+        guestId: currentUser?.id
+      });
+      
+      // Show the module completion screen first, then auth modal
+      setShowModuleComplete(true);
+      
+      // Delay showing auth modal to let user see their results
+      setTimeout(() => {
+        setShowAuthModal(true);
+        trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.AUTH_PROMPT_SHOWN_AFTER_MODULE1, { 
+          trigger: 'module_1_completion',
+          guestId: currentUser?.id
+        });
+      }, 3000); // 3 second delay
+      
       return;
     }
 
@@ -591,17 +681,23 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     }
   };
 
-  // Start new module
+  // Start new module with deferred authentication checks
   const startNewModule = (moduleIndex) => {
-    // Prevent access to Module 2+ for guest users
-    if (isGuest && moduleIndex > 0) {
+    // Enforce deferred authentication: prevent access to Module 2+ for guest users
+    if (isGuest && (GAME_CONFIG?.ENABLE_DEFERRED_AUTH ?? true) && 
+        !(GAME_CONFIG?.MODULE_ACCESS?.GUEST_ACCESSIBLE_MODULES ?? [0]).includes(moduleIndex)) {
+      
+      console.log(`🔒 Guest user attempting to access Module ${moduleIndex + 1}, showing auth modal`);
       setShowAuthModal(true);
       trackGuestEvent('auth_modal_triggered', { 
         trigger: 'module_access_attempt', 
-        moduleIndex 
+        moduleIndex,
+        guestId: currentUser?.id
       });
       return;
     }
+
+    console.log(`🎮 Starting Module ${moduleIndex + 1}`);
 
     // Clear any previously answered questions for this module
     const updatedAnsweredQuestions = { ...answeredQuestions };
@@ -633,8 +729,12 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     setModuleStartTime(new Date());
     setCurrentTime(0);
 
+    // Track module start
     if (isGuest) {
-      trackGuestEvent('module_started', { moduleIndex });
+      trackGuestEvent('module_started', { 
+        moduleIndex,
+        guestId: currentUser?.id
+      });
     }
   };
 
@@ -777,17 +877,28 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
 
   const handleAuthModalClose = () => {
     setShowAuthModal(false);
-    trackGuestEvent('auth_modal_closed', { action: 'dismissed' });
     
+    if (isGuest) {
+      trackGuestEvent(GAME_CONFIG.TELEMETRY_EVENTS.GUEST_AUTH_DEFERRED, { 
+        action: 'dismissed',
+        guestId: currentUser?.id,
+        hasCompletedModule1: hasGuestCompletedModule1()
+      });
+    }
+    
+    // If there's a pending module 1 completion, show the completion screen
     if (pendingModule1Completion) {
+      console.log('🎉 Showing Module 1 completion screen after auth modal close');
       setShowModuleComplete(true);
-      setCompletedModules([...completedModules, currentModule]);
       
-      if (currentModule < modules.length - 1 && 
-          !unlockedModules.includes(currentModule + 1)) {
-        setUnlockedModules([...unlockedModules, currentModule + 1]);
+      // Update completed modules to show Module 1 as completed
+      const newCompletedModules = [...completedModules];
+      if (!newCompletedModules.includes(0)) {
+        newCompletedModules.push(0);
       }
+      setCompletedModules(newCompletedModules);
       
+      // Note: We don't unlock Module 2 for guest users - that only happens after auth
       setPendingModule1Completion(null);
     }
   };

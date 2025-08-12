@@ -27,10 +27,10 @@ const AuthenticationModal = ({
           <div className="mb-6">
             <Trophy className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
             <h2 className="text-3xl font-bold text-white mb-2">
-              Unlock Full Access! 🎮
+              Unlock All Modules! 🎮
             </h2>
             <p className="text-gray-300">
-              Sign up to unlock all modules and compete on the leaderboard!
+              Great job completing Module 1! Sign up to continue to Module 2 and save your progress.
             </p>
           </div>
 
@@ -82,7 +82,7 @@ const AuthenticationModal = ({
               disabled={isLoading}
               className="w-full text-gray-400 hover:text-white transition-colors py-2 disabled:opacity-50"
             >
-              Continue as Guest (Module 1 only)
+              Remind Me Later (Module 2 stays locked)
             </button>
           </div>
         </div>
