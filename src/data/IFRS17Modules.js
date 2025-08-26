@@ -872,7 +872,7 @@
     color: "from-orange-500 to-orange-600",
     questions: [
         {
-        question: "1. When is a contract classified as an onerous contract under IFRS 17?",
+        question: "When is a contract classified as an onerous contract under IFRS 17?",
         options: [
             "When the contract is expected to lapse early",
             "When the contract has no Contractual Service Margin (CSM)",
@@ -884,7 +884,7 @@
             "An onerous contract is one where fulfilment cash flows exceed expected inflows (premiums), resulting in a loss."
         },
         {
-        question: "2. How is the CSM treated for onerous contracts?",
+        question: "How is the CSM treated for onerous contracts?",
         options: [
             "Deferred",
             "Reversed",
@@ -896,7 +896,7 @@
             "The CSM is set to zero since no future profits are expected."
         },
         {
-        question: "3. Which component is recognized when a group is onerous at initial recognition?",
+        question: "Which component is recognized when a group is onerous at initial recognition?",
         options: [
             "Contractual Service Margin",
             "Risk Adjustment",
@@ -908,7 +908,7 @@
             "The loss component is set up to represent losses on onerous contracts and is recognized immediately in profit or loss."
         },
         {
-        question: "4. How is the loss component recognized?",
+        question: "How is the loss component recognized?",
         options: [
             "As an asset",
             "Through OCI",
@@ -920,7 +920,7 @@
             "The loss component is recognized immediately in profit or loss."
         },
         {
-        question: "5. What happens if cash flow estimates improve?",
+        question: "What happens if cash flow estimates improve?",
         options: [
             "Loss component is reversed first",
             "CSM increases",
@@ -932,7 +932,7 @@
             "Improvements first reduce the loss component before adjusting the CSM."
         },
         {
-        question: "6. When is a contract classified as onerous?",
+        question: "When is a contract classified as onerous?",
         options: [
             "When risk adjustment is high",
             "When expected profit is low",
@@ -944,7 +944,7 @@
             "A contract is onerous when the fulfilment cash flows exceed the expected inflows, indicating a net loss."
         },
         {
-        question: "7. What happens to the CSM if a group of contracts becomes onerous after initial recognition?",
+        question: "What happens to the CSM if a group of contracts becomes onerous after initial recognition?",
         options: [
             "It is increased",
             "It is set to zero and loss is recognized",
@@ -956,7 +956,7 @@
             "If contracts become onerous after initial recognition, the CSM is reduced to zero, and any further loss is recognized in profit or loss."
         },
         {
-        question: "8. Which of the following changes can make a previously profitable contract group onerous?",
+        question: "Which of the following changes can make a previously profitable contract group onerous?",
         options: [
             "Increase in administrative expenses",
             "Drop in discount rates",
@@ -968,7 +968,7 @@
             "Increases in expected expenses can raise fulfilment cash flows, potentially making the group onerous."
         },
         {
-        question: "9. How does the loss component affect future insurance revenue?",
+        question: "How does the loss component affect future insurance revenue?",
         options: [
             "No effect",
             "Increases revenue",
@@ -980,7 +980,7 @@
             "For onerous groups, the loss component replaces the CSM and is released as insurance revenue as coverage is provided."
         },
         {
-        question: "10. What causes a change in the loss component?",
+        question: "What causes a change in the loss component?",
         options: [
             "Increase in discount rate",
             "Change in reinsurance treaty",
@@ -999,7 +999,7 @@
     color: "from-teal-500 to-teal-600",
     questions: [
         {
-        question: "1. When is an entity allowed to apply the Premium Allocation Approach (PAA)?",
+        question: "When is an entity allowed to apply the Premium Allocation Approach (PAA)?",
         options: [
             "Only for life insurance contracts",
             "For all investment contracts",
@@ -1010,7 +1010,7 @@
         explanation: "PAA can be used if the coverage period is 12 months or less, or if using PAA would yield results that are not materially different from the General Measurement Model (GMM)."
         },
         {
-        question: "2. What does the liability for remaining coverage (LRC) under PAA represent?",
+        question: "What does the liability for remaining coverage (LRC) under PAA represent?",
         options: [
             "Future claims paid",
             "Present value of premiums",
@@ -1021,7 +1021,7 @@
         explanation: "LRC under PAA reflects the simplified unearned premium approach, adjusted for amortized acquisition costs."
         },
         {
-        question: "3. Which of the following requires risk adjustment under PAA?",
+        question: "Which of the following requires risk adjustment under PAA?",
         options: [
             "Liability for incurred claims",
             "Acquisition cost asset",
@@ -1032,7 +1032,7 @@
         explanation: "Under PAA, the risk adjustment applies to the liability for incurred claims to account for uncertainty in non-financial risk."
         },
         {
-        question: "4. What happens if the liability for remaining coverage is lower than fulfilment cash flows?",
+        question: "What happens if the liability for remaining coverage is lower than fulfilment cash flows?",
         options: [
             "Create a contractual service margin",
             "Defer acquisition costs",
@@ -1043,7 +1043,7 @@
         explanation: "If fulfilment cash flows exceed the liability for remaining coverage, the contract is deemed onerous and the excess is recognized as a loss."
         },
         {
-        question: "5. What are fulfilment cash flows made up of?",
+        question: "What are fulfilment cash flows made up of?",
         options: [
             "Future premiums only",
             "Future claims and profits",
@@ -1054,7 +1054,7 @@
         explanation: "Fulfilment cash flows reflect the present value of expected future inflows and outflows plus the risk adjustment for non-financial risk."
         },
         {
-        question: "6. How is insurance revenue recognized under PAA?",
+        question: "How is insurance revenue recognized under PAA?",
         options: [
             "All at inception",
             "When claims are paid",
@@ -1065,7 +1065,7 @@
         explanation: "Under PAA, revenue is typically recognized on a straight-line basis over the coverage period, reflecting insurance services provided."
         },
         {
-        question: "7. Can insurers offset profitable and onerous contracts within a portfolio under PAA?",
+        question: "Can insurers offset profitable and onerous contracts within a portfolio under PAA?",
         options: [
             "No, grouping rules prevent offsetting",
             "Only with auditor approval",
@@ -1076,7 +1076,7 @@
         explanation: "IFRS 17 requires separate grouping of onerous and profitable contracts; losses cannot be offset by profitable ones."
         },
         {
-        question: "8. What is a key disclosure requirement under IFRS 17 even when using PAA?",
+        question: "What is a key disclosure requirement under IFRS 17 even when using PAA?",
         options: [
             "No disclosure required",
             "Confidence level of liabilities",
@@ -1087,7 +1087,7 @@
         explanation: "Disclosure of the confidence level used to determine the risk adjustment is required, even under the PAA approach."
         },
         {
-        question: "9. Can PAA be used for reinsurance contracts held?",
+        question: "Can PAA be used for reinsurance contracts held?",
         options: [
             "Yes, if eligibility criteria are met",
             "No, PAA is only for direct contracts",
@@ -1098,7 +1098,7 @@
         explanation: "PAA can be applied to reinsurance contracts held if the contract meets the same criteria used for direct contracts."
         },
         {
-        question: "10. What happens when acquisition costs are deferred for an onerous group?",
+        question: "What happens when acquisition costs are deferred for an onerous group?",
         options: [
             "The loss reduces",
             "It offsets the fulfilment cash flows",
@@ -1116,7 +1116,7 @@
     color: "from-cyan-500 to-cyan-600",
     questions: [
         {
-        question: "1. What is a reinsurance contract held under IFRS 17?",
+        question: "What is a reinsurance contract held under IFRS 17?",
         options: [
             "A contract under which an entity receives compensation for claims from a reinsurer",
             "A contract issued to share profits with partners",
@@ -1128,7 +1128,7 @@
             "A reinsurance contract held is one where the insurer (cedant) transfers insurance risk and receives compensation from the reinsurer for claims."
         },
         {
-        question: "2. When should a reinsurance contract held be initially recognized?",
+        question: "When should a reinsurance contract held be initially recognized?",
         options: [
             "When the reinsurer pays a claim",
             "At the start of the underlying insurance contract",
@@ -1140,7 +1140,7 @@
             "Recognition occurs at the earlier of when reinsurance coverage begins or when the reinsurance covers a recognized loss from onerous contracts."
         },
         {
-        question: "3. Can a gain on purchase of reinsurance be recognized immediately?",
+        question: "Can a gain on purchase of reinsurance be recognized immediately?",
         options: [
             "Yes, it boosts profit",
             "No, it is included in the CSM",
@@ -1152,7 +1152,7 @@
             "Gains on the purchase of reinsurance are deferred within the Contractual Service Margin (CSM) and recognized over the coverage period."
         },
         {
-        question: "4. Which of the following is NOT included in fulfilment cash flows for reinsurance contracts held?",
+        question: "Which of the following is NOT included in fulfilment cash flows for reinsurance contracts held?",
         options: [
             "Future claims recoveries",
             "Discounting",
@@ -1164,7 +1164,7 @@
             "Fulfilment cash flows include expected recoveries, discounting, and risk adjustment—not subjective elements like reinsurer's risk appetite."
         },
         {
-        question: "5. What is the impact of reinsurance on the insurer’s risk exposure?",
+        question: "What is the impact of reinsurance on the insurer’s risk exposure?",
         options: [
             "Increases risk",
             "No impact",
@@ -1176,7 +1176,7 @@
             "Reinsurance helps the insurer reduce and manage their insurance risk by transferring a portion of it to the reinsurer."
         },
         {
-        question: "6. How are changes in fulfilment cash flows for reinsurance contracts treated?",
+        question: "How are changes in fulfilment cash flows for reinsurance contracts treated?",
         options: [
             "Adjust the CSM or go through P&L",
             "Ignore until contract maturity",
@@ -1188,7 +1188,7 @@
             "Changes in fulfilment cash flows adjust the CSM if they relate to future services, or are recognized in profit or loss otherwise."
         },
         {
-        question: "7. Under the General Model, what happens to the CSM for reinsurance contracts held over time?",
+        question: "Under the General Model, what happens to the CSM for reinsurance contracts held over time?",
         options: [
             "It grows with claims paid",
             "It’s released based on services received",
@@ -1200,7 +1200,7 @@
             "The CSM for reinsurance contracts held is released over time based on the receipt of reinsurance services."
         },
         {
-        question: "8. How are reinsurance recoveries presented in the income statement?",
+        question: "How are reinsurance recoveries presented in the income statement?",
         options: [
             "Included in insurance revenue",
             "Included in investment income",
@@ -1212,7 +1212,7 @@
             "IFRS 17 requires that reinsurance income and expenses be presented separately from insurance revenue and service expenses."
         },
         {
-        question: "9. How are recoveries for past claims treated under reinsurance contracts held?",
+        question: "How are recoveries for past claims treated under reinsurance contracts held?",
         options: [
             "Deferred in CSM",
             "Expensed as incurred",
@@ -1224,7 +1224,7 @@
             "Recoveries for past claims are immediately recognized in profit or loss as they relate to events that have already occurred."
         },
         {
-        question: "10. What is the impact of a reinsurance CSM being negative?",
+        question: "What is the impact of a reinsurance CSM being negative?",
         options: [
             "It represents a loss",
             "It is a liability",

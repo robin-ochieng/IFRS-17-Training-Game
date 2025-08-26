@@ -26,8 +26,8 @@ const AuthenticationModal = ({
         <div className="text-center">
           <div className="mb-6">
               <img
-                src="/Quest & Conquer.png"
-                alt="Quest & Conquer Logo"
+                src="/IRA logo.png"
+                alt="IRA Logo"
                 className="w-16 h-16 object-contain mx-auto mb-4"
                 onError={(e) => { e.target.style.display = 'none'; }}
               />

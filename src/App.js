@@ -58,7 +58,7 @@ function App() {
   // Loading screen
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+  <div className="min-h-screen flex items-center justify-center bg-black/40">
         <div className="text-white text-xl">Loading...</div>
       </div>
     );

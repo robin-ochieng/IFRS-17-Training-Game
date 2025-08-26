@@ -150,24 +150,17 @@ const AuthScreen = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center p-4 relative">
+    <div className="min-h-screen flex items-center justify-center p-4 relative bg-black/30 backdrop-blur-sm">
       {/* Logo in top-left corner */}
       <div className="absolute top-4 left-4">
         <img 
-          src="/kenbright-logo.png" 
-          alt="Kenbright Logo" 
-          className="h-24 w-auto"
+          src="/IRA logo.png" 
+          alt="IRA Logo" 
+          className="h-10 md:h-12 w-auto"
         />
       </div>
       
-      {/* Quest & Conquer logo in top-right corner */}
-      <div className="absolute top-4 right-4">
-        <img 
-          src="/Quest & Conquer.png" 
-          alt="Quest & Conquer Logo" 
-          className="h-24 w-auto"
-        />
-      </div>
+  {/* Removed Quest & Conquer logo per request */}
       
       <div className="w-full max-w-md">
         {/* Title */}

@@ -92,6 +92,13 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerInterval = useRef(null);
   
+  // Per-module answer stats for tracker (correct vs wrong)
+  const moduleAnsweredEntries = Object.entries(answeredQuestions || {}).filter(([key]) => 
+    key.startsWith(`${currentModule}-`)
+  );
+  const correctCount = moduleAnsweredEntries.filter(([, v]) => v?.wasCorrect).length;
+  const wrongCount = moduleAnsweredEntries.filter(([, v]) => v?.answered && v?.wasCorrect === false).length;
+  
   // Fisher-Yates shuffle algorithm
   const shuffleArray = (array) => {
     const shuffled = [...array];
@@ -1112,14 +1119,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   // Don't render until currentUser is loaded
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-black/40">
         <div className="text-white text-xl">Loading user data...</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 p-4">
+    <div className="min-h-screen p-4 bg-black/30 backdrop-blur-sm">
       <div className="max-w-6xl mx-auto">
         {/* Header with User Info */}
         <div className="flex justify-between items-center mb-4">
@@ -1157,7 +1164,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             ) : (
               <button
                 onClick={handleLogout}
-                className="text-gray-400 hover:text-white text-sm transition-colors"
+                className="text-white text-sm transition-colors"
               >
                 Switch User
               </button>
@@ -1168,9 +1175,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         {/* Title */}
         <div className="mb-6 relative">
           <img 
-            src="/kenbright-logo.png" 
-            alt="Kenbright Logo" 
-            className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-16 lg:h-20 w-auto z-10"
+            src="/IRA logo.png" 
+            alt="IRA Logo" 
+            className="hidden sm:block absolute left-0 top-1/2 transform -translate-y-1/2 h-6 md:h-10 lg:h-12 w-auto z-10"
           />
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
             IFRS 17 Quest and Concur: Regulatory Training Game
@@ -1418,37 +1425,16 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
                     )}
                   </div>
                   
-                  <div className="flex gap-2">
-                    {Object.entries(powerUps).map(([type, count]) => (
-                      <div key={type} className="relative group">
-                        <button
-                          onClick={() => handlePowerUp(type)}
-                          disabled={count === 0}
-                          className={`px-2 md:px-3 py-1 rounded-lg text-xs md:text-sm font-semibold transition-all flex items-center gap-1 ${
-                            count > 0 
-                              ? 'bg-purple-600 hover:bg-purple-700 text-white' 
-                              : 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                          }`}
-                        >
-                          {getPowerUpInfo(type)?.icon}
-                          {count}
-                        </button>
-                        <div className="absolute bottom-full mb-2 left-1/2 transform -translate-x-1/2 hidden group-hover:block z-50">
-                          <div className="bg-black/90 backdrop-blur-sm rounded-lg px-3 py-2 text-white text-xs whitespace-nowrap border border-white/20">
-                            <div className="font-semibold">
-                              {getPowerUpInfo(type)?.name}
-                            </div>
-                            <div className="text-gray-300 mt-1">
-                              {getPowerUpInfo(type)?.description}
-                            </div>
-                            <div className="text-xs text-purple-300 mt-1">
-                              {count > 0 ? `${count} remaining` : 'None left'}
-                            </div>
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-2 h-2 bg-black/90 rotate-45 border-r border-b border-white/20"></div>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                  {/* Correct/Wrong tracker (replaces power-ups) */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 bg-green-900/30 border border-green-400/30 text-green-300 px-3 py-2 rounded-lg backdrop-blur-sm">
+                      <CheckCircle className="w-4 h-4 text-green-400" />
+                      <span className="text-xs md:text-sm font-semibold">Correct: {correctCount}</span>
+                    </div>
+                    <div className="flex items-center gap-2 bg-red-900/30 border border-red-400/30 text-red-300 px-3 py-2 rounded-lg backdrop-blur-sm">
+                      <XCircle className="w-4 h-4 text-red-400" />
+                      <span className="text-xs md:text-sm font-semibold">Wrong: {wrongCount}</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1457,52 +1443,17 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
                 <div 
                   className="h-full bg-gradient-to-r from-blue-400 to-purple-400 transition-all duration-500"
                   style={{ 
-                    width: `${((currentQuestion + 1) / getShuffledQuestions(currentModule).length) * 100}%` 
+                    width: `${((currentQuestion + 1) / getShuffledQuestions(currentModule).length) * 100}%`
                   }}
                 />
               </div>
-              
-              <div className="flex gap-1 md:gap-2 justify-center mb-6 flex-wrap">
-                {getShuffledQuestions(currentModule).map((_, idx) => (
-                  <div
-                    key={idx}
-                    className={`w-2 h-2 md:w-3 md:h-3 rounded-full transition-all ${
-                      answeredQuestions[`${currentModule}-${idx}`]?.answered
-                        ? answeredQuestions[`${currentModule}-${idx}`]?.wasCorrect 
-                          ? 'bg-green-400' 
-                          : 'bg-red-400'
-                        : idx === currentQuestion
-                        ? 'bg-purple-400 ring-2 ring-purple-300'
-                        : 'bg-gray-600'
-                    }`}
-                  />
-                ))}
-              </div>
-              
-              <p className="text-base md:text-xl text-white mb-6">
+            </div>
+
+            {/* Question prompt */}
+            <div className="mb-4">
+              <p className="text-white text-base md:text-lg lg:text-xl font-semibold">
                 {getShuffledQuestions(currentModule)[currentQuestion]?.question}
               </p>
-              
-              {answeredQuestions[`${currentModule}-${currentQuestion}`]?.answered && 
-               !showFeedback && (
-                <div className="bg-yellow-500/20 border border-yellow-400 rounded-lg p-3 mb-4">
-                  <p className="text-yellow-300 text-center text-sm md:text-base mb-2">
-                    ⚠️ You've already answered this question.
-                  </p>
-                  {currentQuestion < modules[currentModule].questions.length - 1 && (
-                    <button
-                      onClick={() => {
-                        setCurrentQuestion(currentQuestion + 1);
-                        setShowFeedback(false);
-                        setSelectedAnswer(null);
-                      }}
-                      className="mx-auto block bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg text-sm md:text-base font-semibold transition-colors"
-                    >
-                      Next Question →
-                    </button>
-                  )}
-                </div>
-              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1602,7 +1553,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
 
         {/* Achievements Display */}
         {achievements.length > 0 && (
-          <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10">
+          <div className="bg-black/30 backdrop-blur-md rounded-2xl p-6 border border-white/10 mt-6">
             <h3 className="text-xl font-bold text-white mb-4">
               Achievements Unlocked
             </h3>
@@ -1653,44 +1604,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           </div>
         )}
 
-      <div className="mt-6 mb-4">
-        <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl">
-          <div className="flex flex-col items-center justify-center space-y-4">
-            <span className="text-sm text-gray-300 font-medium tracking-wide">Developed for</span>
-
-            {/* Logos Row */}
-            <div className="flex flex-row items-center justify-center gap-6">
-
-              {/* IRA Logo */}
-              <div className="relative group">
-                <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-400/30 group-hover:ring-purple-400/40 transition-all duration-500 pointer-events-none"></div>
-                <div className="relative bg-white/10 backdrop-blur-md rounded-2xl p-4 transition-transform duration-300 transform hover:scale-105 border border-white/20 shadow-md">
-                  <img 
-                    src="/IRA logo.png" 
-                    alt="IRA Logo" 
-                    className="h-14 w-auto object-contain brightness-110 contrast-125 drop-shadow-lg transition-all duration-300 hover:brightness-125"
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
-              </div>
-
-              {/* NBFIRA Logo */}
-              <div className="relative group">
-                <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-400/30 group-hover:ring-purple-400/40 transition-all duration-500 pointer-events-none"></div>
-                <div className="relative bg-white/10 backdrop-blur-md rounded-2xl p-4 transition-transform duration-300 transform hover:scale-105 border border-white/20 shadow-md">
-                  <img 
-                    src="/Nbfira_logo.png" 
-                    alt="NBFIRA Logo" 
-                    className="h-14 w-auto object-contain brightness-110 contrast-125 drop-shadow-lg transition-all duration-300 hover:brightness-125"
-                    onError={(e) => { e.target.style.display = 'none'; }}
-                  />
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </div>
+  {/* Removed the "Developed for" section as requested */}
 
 
 
