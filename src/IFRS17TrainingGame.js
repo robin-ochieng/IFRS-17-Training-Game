@@ -477,9 +477,16 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         ? Math.max(...unlockedModules)
         : 0;
       const isUnlocked = unlockedModules?.includes(desiredModule);
-      const targetModule = isUnlocked ? desiredModule : highestUnlocked;
 
-      // Clamp question index to module length
+      // For authenticated users, trust cloud/local last location and unlock up to that module if needed
+      if (!isUnlocked && !isGuest) {
+        const range = Array.from({ length: desiredModule + 1 }, (_, i) => i);
+        setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...range])));
+      }
+
+      const targetModule = (!isUnlocked && isGuest) ? highestUnlocked : desiredModule;
+
+      // Clamp question index to module length (use desired module length if we just unlocked it)
       const totalQ = modules[targetModule]?.questions?.length || 0;
       const clampedQ = Math.max(0, Math.min(desiredQ, Math.max(0, totalQ - 1)));
 
