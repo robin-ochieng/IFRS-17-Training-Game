@@ -469,29 +469,38 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         return;
       }
 
-      const desiredModule = lastLoc.moduleId ?? 0;
+      const lastModuleId = lastLoc.moduleId ?? 0;
       const desiredQ = lastLoc.questionIndex ?? 0;
 
-      // Validate against unlocked modules
+      // Navigate to last_module_id + 1 (next module to play)
+      const nextModule = Math.min(lastModuleId + 1, modules.length - 1);
+
+      // For authenticated users, unlock up to last_module_id and mark them completed
+      if (!isGuest) {
+        const unlockedRange = Array.from({ length: lastModuleId + 1 }, (_, i) => i);
+        const completedRange = Array.from({ length: lastModuleId }, (_, i) => i);
+        
+        setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...unlockedRange])));
+        setCompletedModules(prev => Array.from(new Set([...(prev || []), ...completedRange])));
+      }
+
+      // Validate against unlocked modules for guests
       const highestUnlocked = (unlockedModules && unlockedModules.length > 0)
         ? Math.max(...unlockedModules)
         : 0;
-      const isUnlocked = unlockedModules?.includes(desiredModule);
+      const targetModule = isGuest ? Math.min(nextModule, highestUnlocked) : nextModule;
 
-      // For authenticated users, trust cloud/local last location and unlock up to that module if needed
-      if (!isUnlocked && !isGuest) {
-        const range = Array.from({ length: desiredModule + 1 }, (_, i) => i);
-        setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...range])));
-      }
-
-      const targetModule = (!isUnlocked && isGuest) ? highestUnlocked : desiredModule;
-
-      // Clamp question index to module length (use desired module length if we just unlocked it)
+      // Clamp question index to module length
       const totalQ = modules[targetModule]?.questions?.length || 0;
       const clampedQ = Math.max(0, Math.min(desiredQ, Math.max(0, totalQ - 1)));
 
       navigateToModule(targetModule, clampedQ);
-      console.log('resume_location_applied', { source, moduleId: targetModule, questionIndex: clampedQ });
+      console.log('resume_location_applied', { 
+        source, 
+        lastModuleId, 
+        nextModule: targetModule, 
+        questionIndex: clampedQ 
+      });
     } catch (e) {
       console.warn('Failed to apply resume location:', e);
     }
@@ -505,7 +514,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       const localTs = local?.ts ? Date.parse(local.ts) : 0;
       const cloudTs = cloud?.ts ? Date.parse(cloud.ts) : 0;
       if (local && (!cloud || localTs > cloudTs)) {
-        await updateUserProfileLastLocation(userId, { moduleId: local.moduleId ?? 0, questionIndex: local.questionIndex ?? 0 });
+        // Write guest's current progress as last_module_id (completed module)
+        // If guest is on Module 3, they've completed Modules 1-2, so last_module_id = 2
+        const lastCompletedModule = Math.max(0, (local.moduleId ?? 1) - 1);
+        await updateUserProfileLastLocation(userId, { 
+          moduleId: lastCompletedModule, 
+          questionIndex: local.questionIndex ?? 0 
+        });
+        console.log(`🔄 Guest sync: wrote last_module_id=${lastCompletedModule} to users table`);
       }
     } catch (e) {
       console.warn('syncLastLocationOnLogin failed:', e);
@@ -871,12 +887,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       setUnlockedModules([...unlockedModules, currentModule + 1]);
     }
 
-    // Persist next location suggestion: next module start if unlocked, else current
-    const nextModule = unlockedModules.includes(currentModule + 1) || currentModule + 1 < modules.length
-      ? currentModule + 1
-      : currentModule;
-    const targetModule = unlockedModules.includes(nextModule) ? nextModule : Math.max(...unlockedModules);
-    await persistLastLocation({ moduleId: targetModule, questionIndex: 0 });
+    // Persist completed module as last_module_id (not next module)
+    await persistLastLocation({ moduleId: currentModule, questionIndex: 0 });
   };
   
   // Handle power-up usage
@@ -976,8 +988,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     // RESET TIMER: Don't start timer until first answer
     resetTimer();
 
-  // Persist entry into this module at question 0
-  persistLastLocation({ moduleId: moduleIndex, questionIndex: 0 });
+  // Persist the last completed module (not the one we're starting)
+  const lastCompletedModule = Math.max(0, moduleIndex - 1);
+  persistLastLocation({ moduleId: lastCompletedModule, questionIndex: 0 });
 
     // Track module start
     if (isGuest) {
@@ -1164,68 +1177,37 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     }
   };
 
-  // Sync all data (for manual sync button)
+  // Sync Progress: Navigate to last_module_id + 1
   const handleManualSync = async () => {
     if (isGuest || !currentUser?.id) {
       console.log('⚠️ Cannot sync: User not authenticated');
       return;
     }
     
-    console.log('🔄 Manual sync triggered...');
+    console.log('🔄 Sync Progress triggered...');
     
     try {
-      // Prepare module scores
-      const moduleScores = {};
-      const perfectModules = [];
+      // Query users.last_module_id to navigate to next module
+      const lastLoc = await getUserProfileLastLocation(currentUser.id);
+      const lastModuleId = lastLoc?.moduleId ?? 0;
+      const nextModule = Math.min(lastModuleId + 1, modules.length - 1);
       
-      completedModules.forEach(moduleIndex => {
-        // Calculate score for each module (you might want to track this separately)
-        const moduleQuestions = Object.keys(answeredQuestions).filter(
-          key => key.startsWith(`${moduleIndex}-`)
-        );
-        
-        let moduleCorrect = 0;
-        moduleQuestions.forEach(key => {
-          if (answeredQuestions[key].wasCorrect) moduleCorrect++;
-        });
-        
-        const isPerfect = moduleCorrect === moduleQuestions.length;
-        if (isPerfect) perfectModules.push(moduleIndex);
-        
-        // Estimate module score (you should track actual module scores)
-        moduleScores[moduleIndex] = Math.floor(score / completedModules.length);
-      });
+      console.log(`📍 Sync Progress: last_module_id=${lastModuleId}, navigating to Module ${nextModule + 1}`);
       
-      // Sync all game data
-      const syncResult = await syncAllGameData(currentUser.id, {
-        currentModule,
-        currentQuestion,
-        score,
-        level,
-        xp,
-        completedModules,
-        moduleScores,
-        perfectModules,
-        answeredQuestions,
-        achievements: achievements.map(a => a.id),
-        powerUps,
-        streak,
-        combo,
-        perfectModulesCount,
-        unlockedModules,
-        shuffledQuestions
-      });
+      // Unlock modules <= last_module_id and mark them completed
+      const unlockedRange = Array.from({ length: lastModuleId + 1 }, (_, i) => i);
+      const completedRange = Array.from({ length: lastModuleId }, (_, i) => i);
       
-      if (syncResult.success) {
-        console.log('✅ Manual sync completed successfully');
-        alert('Progress synced successfully!');
-      } else {
-        console.error('❌ Manual sync failed');
-        alert('Failed to sync progress. Please try again.');
-      }
+      setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...unlockedRange])));
+      setCompletedModules(prev => Array.from(new Set([...(prev || []), ...completedRange])));
+      
+      // Navigate to last_module_id + 1
+      navigateToModule(nextModule, 0);
+      
+      alert(`Synced! Navigated to Module ${nextModule + 1}.`);
     } catch (error) {
-      console.error('❌ Error during manual sync:', error);
-      alert('An error occurred while syncing. Please try again.');
+      console.error('❌ Error during Sync Progress:', error);
+      alert('Failed to sync progress. Please try again.');
     }
   };
 
