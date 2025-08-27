@@ -32,6 +32,7 @@ import {
 import { GAME_CONFIG } from './config/gameConfig';
 import AuthenticationModal from './components/AuthenticationModal';
 import LeaderboardModal from './modules/LeaderboardModal';
+import GameGuideFAQ from './components/GameGuideFAQ';
 
 // Import new Supabase service functions
 import {
@@ -58,6 +59,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [isGuest, setIsGuest] = useState(true);
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGuide, setShowGuide] = useState(false);
   const [pendingModule1Completion, setPendingModule1Completion] = useState(null);
   
   // Game state
@@ -1142,8 +1144,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             </div>
           </div>
           
-          {/* Auth CTAs */}
+          {/* Guide + Auth CTAs */}
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowGuide(true)}
+              className="hidden sm:flex items-center gap-2 text-white subpixel-antialiased bg-black/40 hover:bg-black/60 border border-white/20 hover:border-white/40 px-3 py-1.5 rounded-lg transition-colors text-sm font-semibold shadow-sm"
+            >
+              <span>Game Guide</span>
+            </button>
             {isGuest ? (
               <>
                 <button
@@ -1623,19 +1631,26 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
                 <p className="text-gray-300 text-xs mt-1">
                   Version 3.0.0 | IFRS 17 Training Platform
                 </p>
+                <button
+                  onClick={() => setShowGuide(true)}
+                  className="mt-2 inline-flex items-center gap-2 text-xs md:text-sm text-purple-300 hover:text-purple-200 underline underline-offset-2"
+                >
+                  Read the Game Guide & FAQ
+                </button>
               </div>
             </div>
           </div>
         </footer>
 
         {/* Authentication Modal */}
-        <AuthenticationModal 
+  <AuthenticationModal 
           isOpen={showAuthModal}
           onClose={handleAuthModalClose}
           onSignIn={handleSignIn}
           onSignUp={handleSignUp}
           isLoading={isAuthenticating}
         />
+  <GameGuideFAQ isOpen={showGuide} onClose={() => setShowGuide(false)} />
       </div>
     </div>
   );
