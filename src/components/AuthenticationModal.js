@@ -76,9 +76,9 @@ const AuthenticationModal = ({
             <button
               onClick={onSignIn}
               disabled={isLoading}
-              className="w-full bg-black/30 hover:bg-black/50 border border-white/20 hover:border-white/30 text-white font-semibold py-3 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              className="w-full text-white subpixel-antialiased bg-black/60 hover:bg-black/70 border border-white/30 hover:border-white/50 font-semibold py-3 rounded-lg transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
             >
-              <LogIn className="w-5 h-5" />
+              <LogIn className="w-5 h-5" strokeWidth={2.2} />
               Already have an account? Sign In
             </button>
             

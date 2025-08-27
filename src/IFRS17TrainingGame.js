@@ -1148,9 +1148,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
               <>
                 <button
                   onClick={handleSignIn}
-                  className="hidden sm:flex items-center gap-2 text-gray-300 hover:text-white border border-gray-600 hover:border-gray-400 px-3 py-1.5 rounded-lg transition-all text-sm"
+                  className="hidden sm:flex items-center gap-2 text-white subpixel-antialiased bg-black/60 hover:bg-black/70 border border-white/30 hover:border-white/50 px-3 py-1.5 rounded-lg transition-colors text-sm font-semibold shadow-sm"
                 >
-                  <LogIn className="w-4 h-4" />
+                  <LogIn className="w-4 h-4" strokeWidth={2.2} />
                   <span>Sign In</span>
                 </button>
                 <button
