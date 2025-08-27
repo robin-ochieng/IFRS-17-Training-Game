@@ -152,11 +152,11 @@ const AuthScreen = ({ onLogin }) => {
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative bg-black/30 backdrop-blur-sm">
       {/* Logo in top-left corner */}
-      <div className="absolute top-4 left-4">
+    <div className="absolute top-4 left-4">
         <img 
           src="/IRA logo.png" 
           alt="IRA Logo" 
-          className="h-10 md:h-12 w-auto"
+      className="hidden md:block h-10 md:h-12 w-auto"
         />
       </div>
       

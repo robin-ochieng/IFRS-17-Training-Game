@@ -28,7 +28,7 @@ const AuthenticationModal = ({
               <img
                 src="/IRA logo.png"
                 alt="IRA Logo"
-                className="w-16 h-16 object-contain mx-auto mb-4"
+                className="hidden md:block w-16 h-16 object-contain mx-auto mb-4"
                 onError={(e) => { e.target.style.display = 'none'; }}
               />
             <h2 className="text-3xl font-bold text-white mb-2">
