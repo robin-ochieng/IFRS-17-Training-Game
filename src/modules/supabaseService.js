@@ -117,6 +117,93 @@ export const getCurrentUser = async () => {
   }
 };
 
+  // ============================================
+  // LAST-LOCATION HELPERS (RESUME POSITION)
+  // ============================================
+
+  /**
+   * Read last known location for an authenticated user.
+   * Tries, in order:
+   * 1) user_progress.progress_data jsonb (module/question)
+   * 2) user_progress columns current_module/current_question
+   * 3) users table columns last_module_id/last_question_index if they exist
+   */
+  export const getUserProfileLastLocation = async (userId) => {
+    try {
+      // Try user_progress table first
+      const { data: prog, error: progErr } = await supabase
+        .from('user_progress')
+        .select('progress_data, current_module, current_question')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (!progErr && prog) {
+        const fromJson = prog.progress_data || {};
+        const moduleId = typeof fromJson.last_module_id === 'number' ? fromJson.last_module_id
+          : (typeof prog.current_module === 'number' ? prog.current_module : undefined);
+        const questionIndex = typeof fromJson.last_question_index === 'number' ? fromJson.last_question_index
+          : (typeof prog.current_question === 'number' ? prog.current_question : undefined);
+        if (moduleId !== undefined) {
+          return { moduleId, questionIndex: questionIndex ?? 0, source: 'user_progress' };
+        }
+      }
+
+      // Fallback to users table if columns exist
+      const { data: userRow, error: userErr } = await supabase
+        .from('users')
+        .select('last_module_id, last_question_index')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (!userErr && userRow && (userRow.last_module_id !== null || userRow.last_question_index !== null)) {
+        return {
+          moduleId: typeof userRow.last_module_id === 'number' ? userRow.last_module_id : 0,
+          questionIndex: typeof userRow.last_question_index === 'number' ? userRow.last_question_index : 0,
+          source: 'users'
+        };
+      }
+    } catch (e) {
+      console.error('getUserProfileLastLocation error:', e);
+    }
+    return null;
+  };
+
+  /**
+   * Update last known location. Will upsert user_progress row and also try to set users columns if present.
+   */
+  export const updateUserProfileLastLocation = async (userId, { moduleId, questionIndex }) => {
+    try {
+      const now = new Date().toISOString();
+      // Upsert into user_progress
+      const payload = {
+        user_id: userId,
+        current_module: moduleId ?? 0,
+        current_question: questionIndex ?? 0,
+        progress_data: { last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, ts: now },
+        updated_at: now,
+      };
+      const { error: upErr } = await supabase
+        .from('user_progress')
+        .upsert(payload, { onConflict: 'user_id' });
+      if (upErr) console.warn('updateUserProfileLastLocation upsert user_progress warning:', upErr.message);
+
+      // Best-effort update users table if the columns exist
+      const { error: usersErr } = await supabase
+        .from('users')
+        .update({ last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, updated_at: now })
+        .eq('id', userId);
+      if (usersErr && usersErr.code === '42703') {
+        // Column does not exist; ignore silently
+      } else if (usersErr) {
+        console.warn('updateUserProfileLastLocation users update warning:', usersErr.message);
+      }
+      return { success: true };
+    } catch (e) {
+      console.error('updateUserProfileLastLocation error:', e);
+      return { success: false, error: e.message };
+    }
+  };
+
 // ============================================
 // GAME PROGRESS MANAGEMENT
 // ============================================

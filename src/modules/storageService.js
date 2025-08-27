@@ -7,6 +7,7 @@ import {
 
 let STORAGE_KEY = 'ifrs17-progress';
 let CURRENT_USER_ID = null;
+const LAST_LOCATION_BASE_KEY = 'ifrs17-last-location';
 
 // Set user-specific storage
 export const setStorageUser = (userId) => {
@@ -16,6 +17,48 @@ export const setStorageUser = (userId) => {
 
 // Get current storage key
 export const getStorageKey = () => STORAGE_KEY;
+
+// Build a per-user key for last-location storage
+const getLastLocationKey = () => {
+  if (!CURRENT_USER_ID) return LAST_LOCATION_BASE_KEY;
+  return `${LAST_LOCATION_BASE_KEY}-${CURRENT_USER_ID}`;
+};
+
+// Lightweight, timestamped last-location persistence (guest/local only)
+export const setLastLocation = ({ moduleId, questionIndex, ts }) => {
+  try {
+    const payload = {
+      moduleId: typeof moduleId === 'number' ? moduleId : 0,
+      questionIndex: typeof questionIndex === 'number' ? questionIndex : 0,
+      ts: ts || new Date().toISOString(),
+    };
+    localStorage.setItem(getLastLocationKey(), JSON.stringify(payload));
+    return true;
+  } catch (e) {
+    console.error('Failed to set last location:', e);
+    return false;
+  }
+};
+
+export const getLastLocation = () => {
+  try {
+    const raw = localStorage.getItem(getLastLocationKey());
+    return raw ? JSON.parse(raw) : null;
+  } catch (e) {
+    console.error('Failed to get last location:', e);
+    return null;
+  }
+};
+
+export const clearLastLocation = () => {
+  try {
+    localStorage.removeItem(getLastLocationKey());
+    return true;
+  } catch (e) {
+    console.error('Failed to clear last location:', e);
+    return false;
+  }
+};
 
 // Save game state - Updated to use new Supabase service
 export const saveGameState = async (gameState) => {

@@ -50,7 +50,8 @@ import {
   testConnection
 } from './modules/supabaseService';
 
-import { saveGameState, loadGameState, setStorageUser } from './modules/storageService';
+import { saveGameState, loadGameState, setStorageUser, setLastLocation, getLastLocation } from './modules/storageService';
+import { getUserProfileLastLocation, updateUserProfileLastLocation } from './modules/supabaseService';
 
 
 const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) => {
@@ -93,6 +94,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [timerState, setTimerState] = useState('idle'); // 'idle' | 'running' | 'stopped'
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerInterval = useRef(null);
+  const [isBootingResume, setIsBootingResume] = useState(true);
+  const hasTriedResumeRef = useRef(false);
   
   // Per-module answer stats for tracker (correct vs wrong)
   const moduleAnsweredEntries = Object.entries(answeredQuestions || {}).filter(([key]) => 
@@ -126,6 +129,31 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       return shuffled;
     }
     return shuffledQuestions[moduleIndex];
+  };
+
+  // Centralized navigation helper used by both loader and gameplay
+  const navigateToModule = (moduleIndex, questionIndex = 0) => {
+    const maxModule = modules.length - 1;
+    const validModule = Math.max(0, Math.min(moduleIndex ?? 0, maxModule));
+    // Ensure shuffled questions exist for the destination module
+    getShuffledQuestions(validModule);
+    const totalQ = modules[validModule]?.questions?.length || 0;
+    const clampedQ = Math.max(0, Math.min(questionIndex ?? 0, Math.max(0, totalQ - 1)));
+    setCurrentModule(validModule);
+    setCurrentQuestion(clampedQ);
+  };
+
+  // Persist last location depending on auth state
+  const persistLastLocation = async ({ moduleId, questionIndex }) => {
+    try {
+      if (isGuest) {
+        setLastLocation({ moduleId, questionIndex });
+      } else if (currentUser?.id) {
+        await updateUserProfileLastLocation(currentUser.id, { moduleId, questionIndex });
+      }
+    } catch (e) {
+      console.warn('persistLastLocation failed:', e);
+    }
   };
   
   // Handle user prop changes (authentication state changes)
@@ -168,6 +196,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       
       // Load guest progress
       loadGuestProgressData();
+  // Attempt resume after local progress load
+  queueResumeCheck('guest');
     } catch (error) {
       console.error('❌ Error initializing guest mode:', error);
       
@@ -229,16 +259,24 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         
         // Clear any pending module completion since it's now merged
         setPendingModule1Completion(null);
+
+  // After migration, try to sync last location up to Supabase if local is newer
+  await syncLastLocationOnLogin(authenticatedUser.id);
+  queueResumeCheck('auth');
         
       } else {
         console.log('⚠️ No guest progress to migrate, loading authenticated user progress');
         // Load authenticated user progress from database
         loadUserProgress(authenticatedUser.id);
+  await syncLastLocationOnLogin(authenticatedUser.id);
+  queueResumeCheck('auth');
       }
     } catch (error) {
       console.error('❌ Error during guest to authenticated transition:', error);
       // Fallback: load authenticated user progress
       loadUserProgress(authenticatedUser.id);
+  await syncLastLocationOnLogin(authenticatedUser.id);
+  queueResumeCheck('auth');
     }
   };
 
@@ -310,6 +348,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         setAchievements(restoredAchievements);
         
         console.log('✅ Progress loaded from database');
+  // After progress load, attempt resume from lightweight last-location
+  queueResumeCheck('auth');
       } else {
         // No saved progress for authenticated user - set up default state with all modules unlocked
         console.log('No saved progress found for authenticated user, unlocking modules');
@@ -323,12 +363,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         
         setUnlockedModules(defaultUnlocked);
         setCompletedModules(pendingModule1Completion ? [0] : []);
+  queueResumeCheck('auth');
       }
     } catch (error) {
       console.error('❌ Error loading progress:', error);
       
       // On error, ensure authenticated users have basic access
       setUnlockedModules([0, 1]); // At minimum, unlock modules 0 and 1 for authenticated users
+  queueResumeCheck('auth');
     }
   };
 
@@ -370,6 +412,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         }
         
         console.log('✅ Guest progress loaded successfully');
+  // We'll resume via queueResumeCheck called in initializeGuestMode
       } else {
         console.log('📭 No existing guest progress found, starting fresh');
         // Ensure fresh guest state
@@ -394,6 +437,71 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       trackGuestEvent('guest_progress_load_error', { 
         error: error.message 
       });
+    }
+  };
+
+  // Debounced/guarded resume check to avoid flicker
+  const queueResumeCheck = (source) => {
+    if (hasTriedResumeRef.current) return; // run once per mount/auth change
+    hasTriedResumeRef.current = true;
+    // Slight delay to allow state (unlockedModules, etc.) to settle
+    setTimeout(async () => {
+      await tryResumeLastLocation(source);
+      setIsBootingResume(false);
+    }, 50);
+  };
+
+  // Attempt to resume last location from cloud or local
+  const tryResumeLastLocation = async (sourceHint) => {
+    try {
+      let lastLoc = null;
+      let source = 'none';
+      if (!isGuest && currentUser?.id) {
+        lastLoc = await getUserProfileLastLocation(currentUser.id);
+        source = lastLoc ? lastLoc.source || 'cloud' : 'cloud';
+      } else {
+        lastLoc = getLastLocation();
+        source = lastLoc ? 'local' : 'local';
+      }
+
+      if (!lastLoc) {
+        console.log('resume_location_missing');
+        return;
+      }
+
+      const desiredModule = lastLoc.moduleId ?? 0;
+      const desiredQ = lastLoc.questionIndex ?? 0;
+
+      // Validate against unlocked modules
+      const highestUnlocked = (unlockedModules && unlockedModules.length > 0)
+        ? Math.max(...unlockedModules)
+        : 0;
+      const isUnlocked = unlockedModules?.includes(desiredModule);
+      const targetModule = isUnlocked ? desiredModule : highestUnlocked;
+
+      // Clamp question index to module length
+      const totalQ = modules[targetModule]?.questions?.length || 0;
+      const clampedQ = Math.max(0, Math.min(desiredQ, Math.max(0, totalQ - 1)));
+
+      navigateToModule(targetModule, clampedQ);
+      console.log('resume_location_applied', { source, moduleId: targetModule, questionIndex: clampedQ });
+    } catch (e) {
+      console.warn('Failed to apply resume location:', e);
+    }
+  };
+
+  // When a guest signs in, compare timestamps and push newer local last location to Supabase
+  const syncLastLocationOnLogin = async (userId) => {
+    try {
+      const local = getLastLocation();
+      const cloud = await getUserProfileLastLocation(userId);
+      const localTs = local?.ts ? Date.parse(local.ts) : 0;
+      const cloudTs = cloud?.ts ? Date.parse(cloud.ts) : 0;
+      if (local && (!cloud || localTs > cloudTs)) {
+        await updateUserProfileLastLocation(userId, { moduleId: local.moduleId ?? 0, questionIndex: local.questionIndex ?? 0 });
+      }
+    } catch (e) {
+      console.warn('syncLastLocationOnLogin failed:', e);
     }
   };
 
@@ -611,7 +719,10 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
 
     setTimeout(async () => {
       if (currentQuestion < currentModuleQuestions.length - 1) {
-        setCurrentQuestion(currentQuestion + 1);
+  const nextQ = currentQuestion + 1;
+  setCurrentQuestion(nextQ);
+  // Persist after moving to next question
+  persistLastLocation({ moduleId: currentModule, questionIndex: nextQ });
         setShowFeedback(false);
         setSelectedAnswer(null);
       } else {
@@ -752,6 +863,13 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         !unlockedModules.includes(currentModule + 1)) {
       setUnlockedModules([...unlockedModules, currentModule + 1]);
     }
+
+    // Persist next location suggestion: next module start if unlocked, else current
+    const nextModule = unlockedModules.includes(currentModule + 1) || currentModule + 1 < modules.length
+      ? currentModule + 1
+      : currentModule;
+    const targetModule = unlockedModules.includes(nextModule) ? nextModule : Math.max(...unlockedModules);
+    await persistLastLocation({ moduleId: targetModule, questionIndex: 0 });
   };
   
   // Handle power-up usage
@@ -850,6 +968,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     
     // RESET TIMER: Don't start timer until first answer
     resetTimer();
+
+  // Persist entry into this module at question 0
+  persistLastLocation({ moduleId: moduleIndex, questionIndex: 0 });
 
     // Track module start
     if (isGuest) {
@@ -1119,10 +1240,10 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   }, [isGuest, currentUser, answeredQuestions]);
 
   // Don't render until currentUser is loaded
-  if (!currentUser) {
+  if (!currentUser || isBootingResume) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-black/40">
-        <div className="text-white text-xl">Loading user data...</div>
+        <div className="text-white text-xl">{currentUser ? 'Resuming your session…' : 'Loading user data...'}</div>
       </div>
     );
   }
