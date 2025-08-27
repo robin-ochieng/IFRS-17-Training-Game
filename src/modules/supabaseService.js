@@ -133,18 +133,16 @@ export const getCurrentUser = async () => {
       // Try user_progress table first
       const { data: prog, error: progErr } = await supabase
         .from('user_progress')
-        .select('progress_data, current_module, current_question')
+        .select('progress_data')
         .eq('user_id', userId)
-        .maybeSingle();
+        .single();
 
-      if (!progErr && prog) {
+      if ((!progErr || progErr?.code === 'PGRST116') && prog) {
         const fromJson = prog.progress_data || {};
-        const moduleId = typeof fromJson.last_module_id === 'number' ? fromJson.last_module_id
-          : (typeof prog.current_module === 'number' ? prog.current_module : undefined);
-        const questionIndex = typeof fromJson.last_question_index === 'number' ? fromJson.last_question_index
-          : (typeof prog.current_question === 'number' ? prog.current_question : undefined);
+        const moduleId = typeof fromJson.last_module_id === 'number' ? fromJson.last_module_id : undefined;
+        const questionIndex = typeof fromJson.last_question_index === 'number' ? fromJson.last_question_index : undefined;
         if (moduleId !== undefined) {
-          return { moduleId, questionIndex: questionIndex ?? 0, source: 'user_progress' };
+          return { moduleId, questionIndex: questionIndex ?? 0, ts: fromJson.ts, source: 'user_progress' };
         }
       }
 
@@ -153,9 +151,9 @@ export const getCurrentUser = async () => {
         .from('users')
         .select('last_module_id, last_question_index')
         .eq('id', userId)
-        .maybeSingle();
+        .single();
 
-      if (!userErr && userRow && (userRow.last_module_id !== null || userRow.last_question_index !== null)) {
+      if ((!userErr || userErr?.code === 'PGRST116') && userRow && (userRow.last_module_id !== null || userRow.last_question_index !== null)) {
         return {
           moduleId: typeof userRow.last_module_id === 'number' ? userRow.last_module_id : 0,
           questionIndex: typeof userRow.last_question_index === 'number' ? userRow.last_question_index : 0,
@@ -177,8 +175,6 @@ export const getCurrentUser = async () => {
       // Upsert into user_progress
       const payload = {
         user_id: userId,
-        current_module: moduleId ?? 0,
-        current_question: questionIndex ?? 0,
         progress_data: { last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, ts: now },
         updated_at: now,
       };

@@ -3,10 +3,10 @@ import React from 'react';
 import { X, HelpCircle, BookOpen, Trophy, Zap, Timer, Layers, Cloud, ShieldQuestion } from 'lucide-react';
 
 const Section = ({ icon: Icon, title, children }) => (
-  <div className="bg-black/20 border border-white/10 rounded-xl p-4 md:p-5">
+  <div className="bg-black/20 border border-white/10 rounded-xl p-3 md:p-5">
     <div className="flex items-center gap-2 mb-2">
       {Icon && <Icon className="w-5 h-5 text-purple-300" />}
-      <h3 className="text-white font-semibold text-base md:text-lg">{title}</h3>
+      <h3 className="text-white font-semibold text-sm md:text-lg">{title}</h3>
     </div>
     <div className="text-gray-300 text-sm md:text-base leading-relaxed">
       {children}
@@ -25,14 +25,19 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative max-w-3xl w-full bg-gradient-to-br from-gray-900 to-blue-900 border border-purple-500/30 rounded-2xl shadow-2xl overflow-hidden">
+      <div
+        className="relative w-full sm:max-w-lg md:max-w-2xl lg:max-w-3xl bg-gradient-to-br from-gray-900 to-blue-900 border border-purple-500/30 rounded-xl md:rounded-2xl shadow-2xl overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="guide-title"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 md:px-6 py-4 border-b border-white/10">
+        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-purple-300" />
-            <h2 className="text-white text-xl md:text-2xl font-bold">Game Guide & FAQ</h2>
+            <h2 id="guide-title" className="text-white text-lg md:text-2xl font-bold">Game Guide & FAQ</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
             <X className="w-6 h-6" />
@@ -40,7 +45,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="max-h-[72vh] overflow-y-auto p-5 md:p-6 space-y-5">
+        <div className="max-h-[78vh] md:max-h-[72vh] overflow-y-auto overscroll-contain p-4 md:p-6 space-y-4 md:space-y-5">
           <Section icon={BookOpen} title="Quick Start">
             <ul className="list-disc list-inside space-y-1">
               <li>Start with Module 1. It’s open to everyone.</li>
