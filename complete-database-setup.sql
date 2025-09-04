@@ -12,6 +12,8 @@ CREATE TABLE IF NOT EXISTS users (
     avatar TEXT,
     country TEXT DEFAULT 'Unknown',
     gender TEXT DEFAULT 'Prefer not to say',
+    last_module_id INTEGER DEFAULT 0,
+    last_question_index INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

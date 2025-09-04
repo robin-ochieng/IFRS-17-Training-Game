@@ -35,7 +35,7 @@ import LeaderboardModal from './modules/LeaderboardModal';
 import GameGuideFAQ from './components/GameGuideFAQ';
 
 // Import new Supabase service functions
-import {
+import supabase, {
   getCurrentUser,
   signIn,
   signUp,
@@ -146,10 +146,14 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   // Persist last location depending on auth state
   const persistLastLocation = async ({ moduleId, questionIndex }) => {
     try {
+      console.info(`🔍 persistLastLocation called: moduleId=${moduleId}, questionIndex=${questionIndex}, isGuest=${isGuest}, userId=${currentUser?.id}`);
+      
       if (isGuest) {
         setLastLocation({ moduleId, questionIndex });
+        console.info(`🔍 Saved to localStorage: moduleId=${moduleId}, questionIndex=${questionIndex}`);
       } else if (currentUser?.id) {
         await updateUserProfileLastLocation(currentUser.id, { moduleId, questionIndex });
+        console.info(`🔍 Saved to users table: moduleId=${moduleId}, questionIndex=${questionIndex} for user ${currentUser.id}`);
       }
     } catch (e) {
       console.warn('persistLastLocation failed:', e);
@@ -165,6 +169,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       setCurrentUser(propsUser);
       setIsGuest(false);
       setStorageUser(propsUser.id);
+      
+      // Reset resume guard for new user
+      hasTriedResumeRef.current = false;
       
       // Handle guest progress migration
       handleGuestToAuthenticatedTransition(propsUser);
@@ -321,56 +328,73 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   }, []); // Only run once on mount
 
   // Load user progress from database
+  // Canonical load user progress from users table
   const loadUserProgress = async (userId) => {
     try {
-      const savedProgress = await loadGameProgress(userId);
-      
-      if (savedProgress) {
-        // Restore game state from database
-        setCurrentModule(savedProgress.current_module || 0);
-        setCurrentQuestion(savedProgress.current_question || 0);
-        setScore(savedProgress.total_score || 0);
-        setLevel(savedProgress.level || 1);
-        setXp(savedProgress.xp || 0);
-        setStreak(savedProgress.streak || 0);
-        setCombo(savedProgress.combo || 0);
-        setPerfectModulesCount(savedProgress.perfect_modules_count || 0);
-        setCompletedModules(savedProgress.completed_modules || []);
-        setUnlockedModules(savedProgress.unlocked_modules || [0]);
-        setAnsweredQuestions(savedProgress.answered_questions || {});
-        setPowerUps(savedProgress.power_ups || INITIAL_POWER_UPS);
-        setShuffledQuestions(savedProgress.shuffled_questions || {});
-        
-        // Restore achievements
-        const restoredAchievements = achievementsList.filter(a => 
-          savedProgress.achievements?.includes(a.id)
-        );
-        setAchievements(restoredAchievements);
-        
-        console.log('✅ Progress loaded from database');
-  // After progress load, attempt resume from lightweight last-location
-  queueResumeCheck('auth');
-      } else {
-        // No saved progress for authenticated user - set up default state with all modules unlocked
-        console.log('No saved progress found for authenticated user, unlocking modules');
-        
-        // For authenticated users, unlock modules based on their completion status
-        // If they have pending module 1 completion, make sure they have access to module 2
-        const defaultUnlocked = [0]; // Always have module 0 unlocked
-        if (pendingModule1Completion) {
-          defaultUnlocked.push(1); // Unlock module 2 if they completed module 1
-        }
-        
-        setUnlockedModules(defaultUnlocked);
-        setCompletedModules(pendingModule1Completion ? [0] : []);
-  queueResumeCheck('auth');
+      // Fetch canonical progress fields from users table
+      const { data, error } = await supabase
+        .from('users')
+        .select('last_module_id, last_question_index, score, streak, combo, completed_modules')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data) {
+        console.error('❌ Error loading user progress:', error);
+        setUnlockedModules([0, 1]);
+        setCompletedModules([]);
+        setCurrentModule(0);
+        setCurrentQuestion(0);
+        setScore(0);
+        setStreak(0);
+        setCombo(1);
+        queueResumeCheck('auth');
+        return;
       }
+
+      // Hydrate UI state
+      setScore(data.score ?? 0);
+      setStreak(data.streak ?? 0);
+      setCombo(data.combo ?? 1);
+      setCompletedModules(Array.isArray(data.completed_modules) ? data.completed_modules : []);
+      setCurrentQuestion(data.last_question_index ?? 0);
+
+      // Compute next module (bounded)
+      const nextModule = Math.max(1, Math.min((data.last_module_id ?? 0) + 1, modules.length));
+      setCurrentModule(nextModule - 1); // zero-based index
+
+      // Unlock modules up to last_module_id
+      const unlocked = Array.from({ length: nextModule }, (_, i) => i);
+      setUnlockedModules(unlocked);
+
+      // Telemetry log
+      console.info('[BOOT]', { authUserId: userId, fetched: data, nextModule });
+
+      // Insert audit event
+      await supabase.from('progress_events').insert({
+        user_id: userId,
+        event_type: 'LOGIN_RESUME',
+        module_id: nextModule,
+        payload: {
+          last_module_id: data.last_module_id,
+          last_question_index: data.last_question_index,
+          score: data.score,
+          streak: data.streak,
+          combo: data.combo,
+          completed_modules: data.completed_modules
+        }
+      });
+
+      queueResumeCheck('auth');
     } catch (error) {
-      console.error('❌ Error loading progress:', error);
-      
-      // On error, ensure authenticated users have basic access
-      setUnlockedModules([0, 1]); // At minimum, unlock modules 0 and 1 for authenticated users
-  queueResumeCheck('auth');
+      console.error('❌ Error loading canonical user progress:', error);
+      setUnlockedModules([0, 1]);
+      setCompletedModules([]);
+      setCurrentModule(0);
+      setCurrentQuestion(0);
+      setScore(0);
+      setStreak(0);
+      setCombo(1);
+      queueResumeCheck('auth');
     }
   };
 
@@ -469,38 +493,29 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         return;
       }
 
-      const lastModuleId = lastLoc.moduleId ?? 0;
+      const desiredModule = lastLoc.moduleId ?? 0;
       const desiredQ = lastLoc.questionIndex ?? 0;
 
-      // Navigate to last_module_id + 1 (next module to play)
-      const nextModule = Math.min(lastModuleId + 1, modules.length - 1);
-
-      // For authenticated users, unlock up to last_module_id and mark them completed
-      if (!isGuest) {
-        const unlockedRange = Array.from({ length: lastModuleId + 1 }, (_, i) => i);
-        const completedRange = Array.from({ length: lastModuleId }, (_, i) => i);
-        
-        setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...unlockedRange])));
-        setCompletedModules(prev => Array.from(new Set([...(prev || []), ...completedRange])));
-      }
-
-      // Validate against unlocked modules for guests
+      // Validate against unlocked modules
       const highestUnlocked = (unlockedModules && unlockedModules.length > 0)
         ? Math.max(...unlockedModules)
         : 0;
-      const targetModule = isGuest ? Math.min(nextModule, highestUnlocked) : nextModule;
+      const isUnlocked = unlockedModules?.includes(desiredModule);
 
-      // Clamp question index to module length
+      // For authenticated users, trust cloud/local last location and unlock up to that module if needed
+      if (!isUnlocked && !isGuest) {
+        const range = Array.from({ length: desiredModule + 1 }, (_, i) => i);
+        setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...range])));
+      }
+
+      const targetModule = (!isUnlocked && isGuest) ? highestUnlocked : desiredModule;
+
+      // Clamp question index to module length (use desired module length if we just unlocked it)
       const totalQ = modules[targetModule]?.questions?.length || 0;
       const clampedQ = Math.max(0, Math.min(desiredQ, Math.max(0, totalQ - 1)));
 
       navigateToModule(targetModule, clampedQ);
-      console.log('resume_location_applied', { 
-        source, 
-        lastModuleId, 
-        nextModule: targetModule, 
-        questionIndex: clampedQ 
-      });
+      console.log('resume_location_applied', { source, moduleId: targetModule, questionIndex: clampedQ });
     } catch (e) {
       console.warn('Failed to apply resume location:', e);
     }
@@ -514,14 +529,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       const localTs = local?.ts ? Date.parse(local.ts) : 0;
       const cloudTs = cloud?.ts ? Date.parse(cloud.ts) : 0;
       if (local && (!cloud || localTs > cloudTs)) {
-        // Write guest's current progress as last_module_id (completed module)
-        // If guest is on Module 3, they've completed Modules 1-2, so last_module_id = 2
-        const lastCompletedModule = Math.max(0, (local.moduleId ?? 1) - 1);
-        await updateUserProfileLastLocation(userId, { 
-          moduleId: lastCompletedModule, 
-          questionIndex: local.questionIndex ?? 0 
-        });
-        console.log(`🔄 Guest sync: wrote last_module_id=${lastCompletedModule} to users table`);
+        await updateUserProfileLastLocation(userId, { moduleId: local.moduleId ?? 0, questionIndex: local.questionIndex ?? 0 });
       }
     } catch (e) {
       console.warn('syncLastLocationOnLogin failed:', e);
@@ -887,8 +895,12 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
       setUnlockedModules([...unlockedModules, currentModule + 1]);
     }
 
-    // Persist completed module as last_module_id (not next module)
-    await persistLastLocation({ moduleId: currentModule, questionIndex: 0 });
+    // Persist next location suggestion: next module start if unlocked, else current
+    const nextModule = unlockedModules.includes(currentModule + 1) || currentModule + 1 < modules.length
+      ? currentModule + 1
+      : currentModule;
+    const targetModule = unlockedModules.includes(nextModule) ? nextModule : Math.max(...unlockedModules);
+    await persistLastLocation({ moduleId: targetModule, questionIndex: 0 });
   };
   
   // Handle power-up usage
@@ -988,9 +1000,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     // RESET TIMER: Don't start timer until first answer
     resetTimer();
 
-  // Persist the last completed module (not the one we're starting)
-  const lastCompletedModule = Math.max(0, moduleIndex - 1);
-  persistLastLocation({ moduleId: lastCompletedModule, questionIndex: 0 });
+  // Persist entry into this module at question 0
+  persistLastLocation({ moduleId: moduleIndex, questionIndex: 0 });
 
     // Track module start
     if (isGuest) {
@@ -1177,37 +1188,68 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     }
   };
 
-  // Sync Progress: Navigate to last_module_id + 1
+  // Sync all data (for manual sync button)
   const handleManualSync = async () => {
     if (isGuest || !currentUser?.id) {
       console.log('⚠️ Cannot sync: User not authenticated');
       return;
     }
     
-    console.log('🔄 Sync Progress triggered...');
+    console.log('🔄 Manual sync triggered...');
     
     try {
-      // Query users.last_module_id to navigate to next module
-      const lastLoc = await getUserProfileLastLocation(currentUser.id);
-      const lastModuleId = lastLoc?.moduleId ?? 0;
-      const nextModule = Math.min(lastModuleId + 1, modules.length - 1);
+      // Prepare module scores
+      const moduleScores = {};
+      const perfectModules = [];
       
-      console.log(`📍 Sync Progress: last_module_id=${lastModuleId}, navigating to Module ${nextModule + 1}`);
+      completedModules.forEach(moduleIndex => {
+        // Calculate score for each module (you might want to track this separately)
+        const moduleQuestions = Object.keys(answeredQuestions).filter(
+          key => key.startsWith(`${moduleIndex}-`)
+        );
+        
+        let moduleCorrect = 0;
+        moduleQuestions.forEach(key => {
+          if (answeredQuestions[key].wasCorrect) moduleCorrect++;
+        });
+        
+        const isPerfect = moduleCorrect === moduleQuestions.length;
+        if (isPerfect) perfectModules.push(moduleIndex);
+        
+        // Estimate module score (you should track actual module scores)
+        moduleScores[moduleIndex] = Math.floor(score / completedModules.length);
+      });
       
-      // Unlock modules <= last_module_id and mark them completed
-      const unlockedRange = Array.from({ length: lastModuleId + 1 }, (_, i) => i);
-      const completedRange = Array.from({ length: lastModuleId }, (_, i) => i);
+      // Sync all game data
+      const syncResult = await syncAllGameData(currentUser.id, {
+        currentModule,
+        currentQuestion,
+        score,
+        level,
+        xp,
+        completedModules,
+        moduleScores,
+        perfectModules,
+        answeredQuestions,
+        achievements: achievements.map(a => a.id),
+        powerUps,
+        streak,
+        combo,
+        perfectModulesCount,
+        unlockedModules,
+        shuffledQuestions
+      });
       
-      setUnlockedModules(prev => Array.from(new Set([...(prev || [0]), ...unlockedRange])));
-      setCompletedModules(prev => Array.from(new Set([...(prev || []), ...completedRange])));
-      
-      // Navigate to last_module_id + 1
-      navigateToModule(nextModule, 0);
-      
-      alert(`Synced! Navigated to Module ${nextModule + 1}.`);
+      if (syncResult.success) {
+        console.log('✅ Manual sync completed successfully');
+        alert('Progress synced successfully!');
+      } else {
+        console.error('❌ Manual sync failed');
+        alert('Failed to sync progress. Please try again.');
+      }
     } catch (error) {
-      console.error('❌ Error during Sync Progress:', error);
-      alert('Failed to sync progress. Please try again.');
+      console.error('❌ Error during manual sync:', error);
+      alert('An error occurred while syncing. Please try again.');
     }
   };
 
