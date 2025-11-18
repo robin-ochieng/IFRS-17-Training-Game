@@ -205,28 +205,74 @@ export const getCurrentUser = async () => {
 // ============================================
 
 /**
- * Save complete game progress - TEMPORARILY DISABLED FOR TESTING
+ * Save complete game progress to Supabase (with users table sync)
  */
 export const saveGameProgress = async (userId, progressData) => {
   try {
-    console.log('💾 Saving game progress for user:', userId, '(DISABLED FOR LEADERBOARD TESTING)');
-    
-    // TODO: Fix the database function to accept TEXT user IDs instead of UUID
-    // For now, return success to avoid blocking leaderboard testing
-    console.log('✅ Game progress save skipped (testing leaderboard functionality)');
-    return { success: true, data: 'Skipped for testing' };
-    
-    /* Original code - DISABLED
-    const { data, error } = await supabase.rpc('save_game_progress', {
-      p_user_id: userId,
-      p_progress: progressData
-    });
+    if (!userId) throw new Error('User ID is required');
+    if (!progressData) throw new Error('Progress payload is required');
 
-    if (error) throw error;
+    const completedModules = Array.isArray(progressData.completedModules)
+      ? Array.from(new Set(progressData.completedModules)).sort((a, b) => a - b)
+      : [];
+    const unlockedModules = Array.isArray(progressData.unlockedModules) && progressData.unlockedModules.length
+      ? Array.from(new Set(progressData.unlockedModules)).sort((a, b) => a - b)
+      : [0];
 
-    console.log('✅ Game progress saved successfully');
-    return { success: true, data };
-    */
+    const now = new Date().toISOString();
+    const payload = {
+      user_id: userId,
+      current_module: progressData.currentModule ?? 0,
+      current_question: progressData.currentQuestion ?? 0,
+      total_score: progressData.score ?? 0,
+      level: progressData.level ?? 1,
+      xp: progressData.xp ?? 0,
+      streak: progressData.streak ?? 0,
+      combo: progressData.combo ?? 0,
+      perfect_modules_count: progressData.perfectModulesCount ?? 0,
+      completed_modules: completedModules,
+      unlocked_modules: unlockedModules,
+      answered_questions: progressData.answeredQuestions ?? {},
+      achievements: progressData.achievements ?? [],
+      power_ups: progressData.powerUps ?? { skip: 3, hint: 3, eliminate: 3 },
+      shuffled_questions: progressData.shuffledQuestions ?? {},
+      last_saved: now,
+      updated_at: now
+    };
+
+    const { error: progressError } = await supabase
+      .from('game_progress')
+      .upsert(payload, { onConflict: 'user_id' });
+
+    if (progressError) throw progressError;
+
+    const lastCompletedModule = completedModules.length > 0
+      ? Math.max(...completedModules)
+      : payload.current_module;
+
+    const { error: userUpdateError } = await supabase
+      .from('users')
+      .update({
+        last_module_id: lastCompletedModule,
+        last_question_index: payload.current_question,
+        score: payload.total_score,
+        streak: payload.streak,
+        combo: payload.combo,
+        completed_modules: completedModules,
+        updated_at: now
+      })
+      .eq('id', userId);
+
+    if (userUpdateError) {
+      // Ignore missing column errors but surface others for visibility
+      if (userUpdateError.code === '42703') {
+        console.warn('users table missing resume columns, skipping update');
+      } else {
+        console.warn('saveGameProgress warning: failed to update users row', userUpdateError);
+      }
+    }
+
+    return { success: true, data: payload };
   } catch (error) {
     console.error('❌ Save game progress error:', error);
     return { success: false, error: error.message };
@@ -244,9 +290,42 @@ export const loadGameProgress = async (userId) => {
       .from('game_progress')
       .select('*')
       .eq('user_id', userId)
-      .single();
+      .maybeSingle();
 
-    if (error && error.code !== 'PGRST116') throw error; // PGRST116 = no rows returned
+    if (error && error.code !== 'PGRST116') throw error;
+
+    if (!data) {
+      console.log('ℹ️ No game progress found, creating default row');
+      const defaultProgress = {
+        user_id: userId,
+        current_module: 0,
+        current_question: 0,
+        total_score: 0,
+        level: 1,
+        xp: 0,
+        streak: 0,
+        combo: 0,
+        perfect_modules_count: 0,
+        completed_modules: [],
+        unlocked_modules: [0],
+        answered_questions: {},
+        achievements: [],
+        power_ups: { skip: 3, hint: 3, eliminate: 3 },
+        shuffled_questions: {},
+        last_saved: new Date().toISOString()
+      };
+
+      const { error: insertError } = await supabase
+        .from('game_progress')
+        .insert([defaultProgress]);
+
+      if (insertError) {
+        console.error('❌ Failed to insert default progress:', insertError);
+        return null;
+      }
+
+      return defaultProgress;
+    }
 
     console.log('✅ Game progress loaded:', data);
     return data;
@@ -278,6 +357,23 @@ export const clearGameProgress = async (userId) => {
       .eq('user_id', userId);
 
     if (modulesError) throw modulesError;
+
+    const { error: resetUserError } = await supabase
+      .from('users')
+      .update({
+        last_module_id: 0,
+        last_question_index: 0,
+        score: 0,
+        streak: 0,
+        combo: 0,
+        completed_modules: [],
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', userId);
+
+    if (resetUserError && resetUserError.code !== '42703') {
+      console.warn('clearGameProgress warning: failed to reset users row', resetUserError);
+    }
 
     console.log('✅ Game progress cleared');
     return { success: true };

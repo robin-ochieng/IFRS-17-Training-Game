@@ -1055,7 +1055,6 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         success = saveGuestProgress(progressData);
         console.log('💾 Guest progress saved to localStorage');
       } else if (currentUser?.id) {
-        // Ensure storage key matches current authenticated user for fallback saves
         setStorageUser(currentUser.id);
         success = await saveGameState(progressData);
         if (success) {

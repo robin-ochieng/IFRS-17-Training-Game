@@ -1,8 +1,11 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import App from './App';
 
-test('renders learn react link', () => {
-  render(<App />);
-  const linkElement = screen.getByText(/learn react/i);
-  expect(linkElement).toBeInTheDocument();
+jest.mock('./IFRS17TrainingGame', () => () => <div>Training Game Ready</div>);
+
+describe('App bootstrap experience', () => {
+  test('eventually renders the game shell', async () => {
+    render(<App />);
+    await waitFor(() => expect(screen.getByText(/training game ready/i)).toBeInTheDocument());
+  });
 });
