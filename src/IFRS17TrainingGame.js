@@ -271,9 +271,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         {/* Title */}
         <div className="mb-6 relative">
           <img 
-            src="/IRA logo.png" 
-            alt="IRA Logo" 
-            className="hidden md:block absolute left-0 top-1/2 transform -translate-y-1/2 h-6 md:h-10 lg:h-12 w-auto z-10"
+            src="/kenbright-logo.png" 
+            alt="Kenbright Logo" 
+            className="hidden md:block absolute left-0 top-1/2 transform -translate-y-1/2 h-10 md:h-16 lg:h-20 w-auto z-10"
           />
           <h1 className="text-xl md:text-2xl lg:text-3xl font-bold text-white text-center py-2">
             IFRS 17 Quest and Concur: Regulatory Training Game
@@ -390,6 +390,45 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             ⚠️ Reset All Progress
           </button>
         </div>
+
+      <div className="mt-6 mb-4">
+        <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl">
+          <div className="flex flex-col items-center justify-center space-y-4">
+            <span className="text-sm text-gray-300 font-medium tracking-wide">Developed for</span>
+
+            {/* Logos Row */}
+            <div className="flex flex-row items-center justify-center gap-6">
+
+              {/* IRA Logo */}
+              <div className="relative group">
+                <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-400/30 group-hover:ring-purple-400/40 transition-all duration-500 pointer-events-none"></div>
+                <div className="relative bg-white/10 backdrop-blur-md rounded-2xl p-4 transition-transform duration-300 transform hover:scale-105 border border-white/20 shadow-md">
+                  <img 
+                    src="/IRA logo.png" 
+                    alt="IRA Logo" 
+                    className="h-14 w-auto object-contain brightness-110 contrast-125 drop-shadow-lg transition-all duration-300 hover:brightness-125"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+              </div>
+
+              {/* NBFIRA Logo */}
+              <div className="relative group">
+                <div className="absolute inset-0 rounded-2xl ring-2 ring-blue-400/30 group-hover:ring-purple-400/40 transition-all duration-500 pointer-events-none"></div>
+                <div className="relative bg-white/10 backdrop-blur-md rounded-2xl p-4 transition-transform duration-300 transform hover:scale-105 border border-white/20 shadow-md">
+                  <img 
+                    src="/Nbfira_logo.png" 
+                    alt="NBFIRA Logo" 
+                    className="h-14 w-auto object-contain brightness-110 contrast-125 drop-shadow-lg transition-all duration-300 hover:brightness-125"
+                    onError={(e) => { e.target.style.display = 'none'; }}
+                  />
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
 
         {/* Saving Indicator */}
         <SavingIndicator isSaving={isSavingProgress} />

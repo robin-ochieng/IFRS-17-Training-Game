@@ -154,9 +154,9 @@ const AuthScreen = ({ onLogin }) => {
       {/* Logo in top-left corner */}
     <div className="absolute top-4 left-4">
         <img 
-          src="/IRA logo.png" 
-          alt="IRA Logo" 
-      className="hidden md:block h-10 md:h-12 w-auto"
+          src="/kenbright-logo.png" 
+          alt="Kenbright Logo" 
+      className="hidden md:block h-14 md:h-20 w-auto"
         />
       </div>
       
