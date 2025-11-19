@@ -234,14 +234,7 @@ const useQuestionFlow = ({
     setUnlockedModules(newUnlockedModules);
     setShowModuleComplete(true);
 
-    // Save progress with overrides
-    await saveProgress({
-      completedModules: newCompletedModules,
-      unlockedModules: newUnlockedModules,
-      perfectModulesCount: perfectModule ? perfectModulesCount + 1 : perfectModulesCount,
-      moduleCompletionTimes: updatedModuleCompletionTimes
-    });
-
+    // Calculate next module for persistence
     const nextModule =
       newUnlockedModules.includes(currentModule + 1) || currentModule + 1 < modules.length
         ? currentModule + 1
@@ -249,6 +242,17 @@ const useQuestionFlow = ({
     const targetModule = newUnlockedModules.includes(nextModule)
       ? nextModule
       : Math.max(...newUnlockedModules);
+
+    // Save progress with overrides including the NEXT module
+    await saveProgress({
+      completedModules: newCompletedModules,
+      unlockedModules: newUnlockedModules,
+      perfectModulesCount: perfectModule ? perfectModulesCount + 1 : perfectModulesCount,
+      moduleCompletionTimes: updatedModuleCompletionTimes,
+      currentModule: targetModule,
+      currentQuestion: 0
+    });
+
     await persistLastLocation({ moduleId: targetModule, questionIndex: 0 });
   };
 

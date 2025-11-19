@@ -152,7 +152,23 @@ export const getCurrentUser = async () => {
    */
   export const getUserProfileLastLocation = async (userId) => {
     try {
-      // Try user_progress table first
+      // 1. Try game_progress table (New Source of Truth)
+      const { data: gameProg, error: gameErr } = await supabase
+        .from('game_progress')
+        .select('current_module, current_question, updated_at')
+        .eq('user_id', userId)
+        .single();
+
+      if (!gameErr && gameProg) {
+         return {
+           moduleId: gameProg.current_module ?? 0,
+           questionIndex: gameProg.current_question ?? 0,
+           ts: gameProg.updated_at,
+           source: 'game_progress'
+         };
+      }
+
+      // 2. Try user_progress table (Legacy)
       const { data: prog, error: progErr } = await supabase
         .from('user_progress')
         .select('progress_data')

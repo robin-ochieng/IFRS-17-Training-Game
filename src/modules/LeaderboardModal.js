@@ -3,7 +3,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { 
   Trophy, 
   Medal, 
-  Award, 
   TrendingUp, 
   Users, 
   Clock, 
