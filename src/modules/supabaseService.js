@@ -1,3 +1,4 @@
+/* global globalThis */
 // supabaseService.js
 import { createClient } from '@supabase/supabase-js';
 
@@ -8,7 +9,28 @@ if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase environment variables!');
 }
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const SUPABASE_GLOBAL_KEY = '__IFRS17_SUPABASE_CLIENT__';
+
+const getSupabaseClient = () => {
+  // Detect whichever global scope is available (browser, worker, or Node)
+  const globalScope =
+    (typeof globalThis !== 'undefined' && globalThis) ||
+    (typeof window !== 'undefined' && window) ||
+    {};
+
+  if (!globalScope[SUPABASE_GLOBAL_KEY]) {
+    globalScope[SUPABASE_GLOBAL_KEY] = createClient(supabaseUrl, supabaseKey, {
+      auth: {
+        storageKey: 'ifrs17-auth-token',
+        detectSessionInUrl: false,
+      },
+    });
+  }
+
+  return globalScope[SUPABASE_GLOBAL_KEY];
+};
+
+const supabase = getSupabaseClient();
 
 // ============================================
 // USER AUTHENTICATION & MANAGEMENT
@@ -236,6 +258,7 @@ export const saveGameProgress = async (userId, progressData) => {
       achievements: progressData.achievements ?? [],
       power_ups: progressData.powerUps ?? { skip: 3, hint: 3, eliminate: 3 },
       shuffled_questions: progressData.shuffledQuestions ?? {},
+      module_completion_times: progressData.moduleCompletionTimes ?? {},
       last_saved: now,
       updated_at: now
     };
@@ -312,6 +335,7 @@ export const loadGameProgress = async (userId) => {
         achievements: [],
         power_ups: { skip: 3, hint: 3, eliminate: 3 },
         shuffled_questions: {},
+        module_completion_times: {},
         last_saved: new Date().toISOString()
       };
 
@@ -402,7 +426,7 @@ export const testDatabaseConnection = async () => {
   try {
     // Test basic connection
     console.log('🔍 Testing basic Supabase connection...');
-    const { data: pingData, error: pingError } = await supabase
+    const { error: pingError } = await supabase
       .from('users')
       .select('count')
       .limit(1);
@@ -646,7 +670,7 @@ export const submitModuleScore = async (userId, moduleData) => {
     console.log('🔍 PHASE 5: Calculating overall leaderboard stats...');
     const { data: userModules, error: modulesError } = await supabase
       .from('module_leaderboard')
-      .select('score, perfect_completion')
+      .select('score, perfect_completion, completion_time')
       .eq('user_id', userId);
       
     if (modulesError) {
@@ -659,8 +683,24 @@ export const submitModuleScore = async (userId, moduleData) => {
     const modulesCompleted = userModules ? userModules.length : 1;
     const perfectModules = userModules ? userModules.filter(m => m.perfect_completion).length : (moduleData.perfectCompletion ? 1 : 0);
     const level = Math.floor(totalScore / 100) + 1;
+
+    // Calculate average completion time
+    let totalTime = 0;
+    let timeCount = 0;
+    if (userModules) {
+      userModules.forEach(m => {
+        if (m.completion_time) {
+          totalTime += m.completion_time;
+          timeCount++;
+        }
+      });
+    } else if (moduleData.completionTime) {
+      totalTime = moduleData.completionTime;
+      timeCount = 1;
+    }
+    const averageCompletionTime = timeCount > 0 ? Math.round(totalTime / timeCount) : 0;
     
-    console.log('📊 Calculated stats:', { totalScore, modulesCompleted, perfectModules, level });
+    console.log('📊 Calculated stats:', { totalScore, modulesCompleted, perfectModules, level, averageCompletionTime });
 
     // PHASE 6: Overall Leaderboard Entry
     console.log('🔍 PHASE 6: Preparing overall leaderboard entry...');
@@ -677,6 +717,7 @@ export const submitModuleScore = async (userId, moduleData) => {
       achievements: 0,
       modules_completed: modulesCompleted,
       perfect_modules: perfectModules,
+      average_completion_time: averageCompletionTime,
       completed_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
@@ -758,7 +799,7 @@ export const getOverallLeaderboard = async (userId = null, limit = 50) => {
     
     // PHASE 1: Test database connection and table existence
     console.log('🔍 PHASE 1: Testing leaderboard table...');
-    const { data: tableTest, error: tableTestError } = await supabase
+    const { error: tableTestError } = await supabase
       .from('leaderboard')
       .select('*')
       .limit(1);

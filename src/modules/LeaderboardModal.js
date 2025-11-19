@@ -410,6 +410,17 @@ const LeaderboardModal = ({
                               <p className="text-green-400 font-semibold">{entry.modules_completed || 0}</p>
                               <p className="text-gray-500 text-xs">Modules</p>
                             </div>
+                            {entry.average_completion_time > 0 && (
+                              <div className="text-center hidden lg:block">
+                                <div className="flex items-center gap-1 justify-center">
+                                  <Clock className="w-4 h-4 text-cyan-400" />
+                                  <p className="text-cyan-400 font-semibold">
+                                    {formatTime(entry.average_completion_time)}
+                                  </p>
+                                </div>
+                                <p className="text-gray-500 text-xs">Avg Time</p>
+                              </div>
+                            )}
                             <div className="text-center hidden lg:block">
                               <p className="text-orange-400 font-semibold">{entry.achievements || 0}</p>
                               <p className="text-gray-500 text-xs">Awards</p>

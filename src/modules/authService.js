@@ -1,18 +1,5 @@
 // src/modules/authService.js
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
-const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
-
-if (!supabaseUrl || !supabaseAnonKey) {
-  console.warn('⚠️ Supabase environment variables not set. Using fallback values.');
-}
-
-const supabase = createClient(
-  supabaseUrl || 'YOUR_SUPABASE_URL',
-  supabaseAnonKey || 'YOUR_SUPABASE_ANON_KEY'
-);
+import supabase from './supabaseService';
 
 // Storage keys
 const CURRENT_USER_KEY = 'ifrs17_current_user';
@@ -289,8 +276,6 @@ export const setCurrentUserSession = (user, session = null) => {
 // Sign out current user - Enhanced
 export const signOut = async () => {
   try {
-    const user = getCurrentAuthUser();
-    
     // Clear all auth-related storage
     localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(AUTH_TOKEN_KEY);
@@ -655,7 +640,7 @@ export const deleteAccount = async (userId, password) => {
 };
 
 // Export all functions as default for convenience
-export default {
+const authService = {
   signUpUser,
   signInUser,
   getCurrentAuthUser,
@@ -673,3 +658,5 @@ export default {
   validateSession,
   deleteAccount
 };
+
+export default authService;

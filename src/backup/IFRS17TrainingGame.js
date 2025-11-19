@@ -4,21 +4,21 @@ import {
   Trophy, Star, Zap, Lock, CheckCircle, XCircle, TrendingUp, 
   Award, Clock, LogIn, UserPlus 
 } from 'lucide-react';
-import { modules } from '../data/IFRS17Modules';
+import { modules } from './data/IFRS17Modules';
 import { 
   achievementsList, 
   getNewAchievements, 
   createAchievementStats, 
   getGenderBasedAchievementName, 
   getGenderBasedAchievementIcon 
-} from '../modules/achievements';
+} from './modules/achievements';
 import { 
   INITIAL_POWER_UPS, 
   consumePowerUp, 
   refreshPowerUps, 
   canUsePowerUp, 
   getPowerUpInfo 
-} from '../modules/powerUps';
+} from './modules/powerUps';
 import { 
   createGuestUser, 
   getGuestUser, 
@@ -28,11 +28,11 @@ import {
   migrateGuestToAuthenticatedUser,
   hasGuestCompletedModule1,
   getGuestModule1Completion
-} from '../modules/guestUserService';
-import { GAME_CONFIG } from '../config/gameConfig';
-import AuthenticationModal from '../components/AuthenticationModal';
-import LeaderboardModal from '../modules/LeaderboardModal';
-import GameGuideFAQ from '../components/GameGuideFAQ';
+} from './modules/guestUserService';
+import { GAME_CONFIG } from './config/gameConfig';
+import AuthenticationModal from './components/AuthenticationModal';
+import LeaderboardModal from './modules/LeaderboardModal';
+import GameGuideFAQ from './components/GameGuideFAQ';
 
 // Import new Supabase service functions
 import supabase, {
@@ -43,10 +43,10 @@ import supabase, {
   clearGameProgress,
   submitModuleScore,
   syncAllGameData
-} from '../modules/supabaseService';
+} from './modules/supabaseService';
 
-import { saveGameState, setStorageUser, setLastLocation, getLastLocation } from '../modules/storageService';
-import { getUserProfileLastLocation, updateUserProfileLastLocation } from '../modules/supabaseService';
+import { saveGameState, setStorageUser, setLastLocation, getLastLocation } from './modules/storageService';
+import { getUserProfileLastLocation, updateUserProfileLastLocation } from './modules/supabaseService';
 
 
 const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) => {
@@ -1055,6 +1055,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         success = saveGuestProgress(progressData);
         console.log('💾 Guest progress saved to localStorage');
       } else if (currentUser?.id) {
+        // Ensure storage key matches current authenticated user for fallback saves
         setStorageUser(currentUser.id);
         success = await saveGameState(progressData);
         if (success) {
