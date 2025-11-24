@@ -23,6 +23,14 @@ const GameFooter = ({ onShowGuide }) => {
             >
               Read the Game Guide & FAQ
             </button>
+            <a
+              href="https://www.ifrs.org/content/dam/ifrs/publications/pdf-standards/english/2022/issued/part-a/ifrs-17-insurance-contracts.pdf?bypass=on"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-2 block text-xs md:text-sm text-blue-300 hover:text-blue-200 underline underline-offset-2"
+            >
+              View Official IFRS 17 Standard (PDF)
+            </a>
           </div>
         </div>
       </div>

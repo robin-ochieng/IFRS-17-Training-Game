@@ -401,15 +401,15 @@
             "The standard requires a pre-recognition assessment if there's an indication of onerousness."
         },
         {
-        question: "What is the treatment if IACFs are not immediately expensed?",
+        question: "If insurance acquisition cash flows (IACFs) are not immediately expensed and are incurred before the initial recognition of a group of insurance contracts, how are they treated under IFRS 17?",
         options: [
-            "They are recognized as an asset or liability",
+            "They are recognised as an insurance acquisition cash flows asset and allocated to the related group on initial recognition (then amortised through the LRC).",
             "They are deferred revenue",
-            "They are added to the CSM",
-            "They are amortized over the contract term"
+            "They are added to the CSM immediately",
+            "They are expensed only when claims occur"
         ],
         correct: 0,
-        explanation: "IACFs are treated separately until the related group is recognized."
+        explanation: "Pre-recognition IACFs not expensed immediately form an IACF asset, allocated to the group at initial recognition and amortised via the LRC. Post-recognition IACFs are included in the LRC (no separate asset)."
         },
         {
         question: "When is the acquisition asset or liability removed from the books?",
@@ -515,7 +515,7 @@
             "Fulfilment cash flows include expected future premiums and claims."
         },
         {
-        question: "If the fulfilment cash flows are negative, what does IFRS 17 require?",
+        question: "Assume a sign convention where expected inflows are positive and expected outflows (including risk adjustment) are negative. If the fulfilment cash flows at initial recognition are negative (i.e., outflows + RA exceed inflows), what does IFRS 17 require under the GMM?",
         options: [
             "Defer the difference",
             "Recognize a loss immediately",
@@ -524,7 +524,7 @@
         ],
         correct: 1,
         explanation:
-            "Negative fulfilment cash flows indicate an onerous contract; a loss is recognized in profit or loss."
+            "Given inflows are positive and outflows+RA are negative, negative FCF indicates an onerous group. IFRS 17 requires immediate loss recognition (loss component), not a CSM."
         },
         {
         question: "What happens to a day-1 gain under IFRS 17?",
@@ -817,16 +817,16 @@
             "Future favorable changes in fulfilment cash flows can indicate that the group is no longer onerous, allowing reversal of the loss component."
         },
         {
-        question: "In the context of IFRS 17, what does the Liability for Remaining Coverage (LRC) represent when the Contractual Service Margin (CSM) is nil?",
+        question: "Under IFRS 17, when the Contractual Service Margin (CSM) is nil, what does the Liability for Remaining Coverage (LRC) represent?",
         options: [
-            "The sum of the fulfilment cash flows and the loss component.",
-            "Only the present value of future cash flows without any adjustments.",
-            "The Liability for Incurred Claims (LIC) only.",
-            "The Risk Adjustment for non-financial risk only."
+            "The fulfilment cash flows only (i.e., BEL + Risk Adjustment).",
+            "The sum of the fulfilment cash flows and a loss component.",
+            "Only the present value of future cash flows without Risk Adjustment.",
+            "The Liability for Incurred Claims (LIC) only."
         ],
         correct: 0,
         explanation:
-            "When the CSM is zero, the LRC consists of the fulfilment cash flows plus any loss component for onerous contracts."
+            "When CSM = 0, the LRC equals the fulfilment cash flows (BEL + RA). The loss component is already embedded in the fulfilment cash flows, so it is not added separately."
         },
         {
         question: "Which discount rate is used to accrete interest on the CSM?",
@@ -932,16 +932,16 @@
             "Improvements first reduce the loss component before adjusting the CSM."
         },
         {
-        question: "When is a contract classified as onerous?",
+        question: "When is a group of insurance contracts classified as onerous under IFRS 17?",
         options: [
             "When risk adjustment is high",
             "When expected profit is low",
-            "When fulfilment cash flows exceed premiums",
+            "When there is a net expected outflow (i.e., expected outflows + risk adjustment exceed expected inflows).",
             "When lapse rate is high"
         ],
         correct: 2,
         explanation:
-            "A contract is onerous when the fulfilment cash flows exceed the expected inflows, indicating a net loss."
+            "Onerous = net expected outflow: outflows + RA > inflows, so loss is recognized and CSM = 0."
         },
         {
         question: "What happens to the CSM if a group of contracts becomes onerous after initial recognition?",
@@ -968,16 +968,16 @@
             "Increases in expected expenses can raise fulfilment cash flows, potentially making the group onerous."
         },
         {
-        question: "How does the loss component affect future insurance revenue?",
+        question: "Under IFRS 17, how does the loss component affect future insurance revenue for an onerous group?",
         options: [
             "No effect",
             "Increases revenue",
             "It reduces future revenue",
-            "It replaces CSM in revenue recognition"
+            "Amounts relating to the loss component are excluded from future insurance revenue."
         ],
         correct: 3,
         explanation:
-            "For onerous groups, the loss component replaces the CSM and is released as insurance revenue as coverage is provided."
+            "Loss component is recognised immediately and excluded from future insurance revenue. There’s no CSM."
         },
         {
         question: "What causes a change in the loss component?",

@@ -156,7 +156,7 @@ const LeaderboardModal = ({
               </div>
               <div>
                 <h2 className="text-3xl font-bold text-white">
-                  {activeTab === 'overall' ? 'Grand Leaderboard' : `${modules[activeTab]?.title || 'Module'} Leaderboard`}
+                  {activeTab === 'overall' ? 'IFRS17 Game Leaderboard' : `${modules[activeTab]?.title || 'Module'} Leaderboard`}
                 </h2>
                 <p className="text-gray-300 mt-1">
                   Compete with players worldwide
