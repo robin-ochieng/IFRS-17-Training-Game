@@ -1,6 +1,6 @@
 // src/components/UserLogin.js
 import React, { useState, useEffect } from 'react';
-import { User, Plus, LogIn, Loader2 } from 'lucide-react';
+import { User, Plus, LogIn, Loader2, XCircle, X } from 'lucide-react';
 import { getAllUsers, createUserProfile, saveUser, setCurrentUser } from '../modules/userProfile';
 
 const countries = [
@@ -69,6 +69,7 @@ const UserLogin = ({ onLogin }) => {
   const [newUserCountry, setNewUserCountry] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
+  const [errorMessage, setErrorMessage] = useState(null);
 
   // Load users from Supabase on component mount
   useEffect(() => {
@@ -106,7 +107,7 @@ const UserLogin = ({ onLogin }) => {
         }
       } catch (error) {
         console.error('Error creating user:', error);
-        alert('Failed to create user. Please try again.');
+        setErrorMessage('Failed to create user. Please try again.');
       } finally {
         setIsCreating(false);
       }
@@ -161,6 +162,21 @@ const UserLogin = ({ onLogin }) => {
         {/* New User Form */}
         {showNewUser && (
           <div className="space-y-4 mb-6">
+            {/* Error Message */}
+            {errorMessage && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <XCircle className="w-5 h-5 text-red-400" />
+                  <p className="text-red-400 text-sm">{errorMessage}</p>
+                </div>
+                <button 
+                  onClick={() => setErrorMessage(null)}
+                  className="p-1 hover:bg-white/10 rounded transition-colors"
+                >
+                  <X className="w-4 h-4 text-red-400" />
+                </button>
+              </div>
+            )}
             <input
               type="text"
               placeholder="Your Name"

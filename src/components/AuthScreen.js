@@ -156,7 +156,7 @@ const AuthScreen = ({ onLogin }) => {
         <img 
           src="/kenbright-logo.png" 
           alt="Kenbright Logo" 
-      className="hidden md:block h-14 md:h-20 w-auto"
+      className="hidden md:block h-20 md:h-28 w-auto"
         />
       </div>
       
@@ -171,6 +171,16 @@ const AuthScreen = ({ onLogin }) => {
 
         {/* Auth Card */}
         <div className="bg-black/40 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10 p-8">
+          {/* Logo above title */}
+          <div className="flex justify-center mb-4">
+            <img 
+              src="/kenbright-logo.png" 
+              alt="Kenbright Logo" 
+              className="h-16 sm:h-20 w-auto"
+              onError={(e) => { e.target.style.display = 'none'; }}
+            />
+          </div>
+          
           <h2 className="text-2xl font-bold text-white mb-6 text-center">
             {isSignUp ? 'Create Account' : 'Welcome Back'}
           </h2>

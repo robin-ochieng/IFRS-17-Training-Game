@@ -36,6 +36,7 @@ const useGamePersistence = ({
   navigateToModule,
 }) => {
   const hasTriedResumeRef = useRef(false);
+  const guestInitializedRef = useRef(false);
 
   const {
     currentUser,
@@ -243,6 +244,11 @@ const useGamePersistence = ({
   }, [modules.length, resetAchievements, restoreAchievements, setAnsweredQuestions, setCombo, setCompletedModules, setCurrentModule, setCurrentQuestion, setLevel, setPerfectModulesCount, setPowerUps, setScore, setShuffledQuestions, setStreak, setUnlockedModules, setXp]);
 
   const initializeGuestMode = useCallback(() => {
+    // Prevent re-initialization during active gameplay
+    if (guestInitializedRef.current) {
+      return;
+    }
+
     try {
       let guestUser = getGuestUser();
       if (!guestUser) {
@@ -255,6 +261,7 @@ const useGamePersistence = ({
       setIsGuest(true);
       setStorageUser(guestUser.id);
 
+      guestInitializedRef.current = true;
       loadGuestProgressData();
       queueResumeCheck();
     } catch (error) {
@@ -436,18 +443,6 @@ const useGamePersistence = ({
   }, [achievements, answeredQuestions, combo, completedModules, currentModule, currentQuestion, currentUser, isGuest, isSavingProgress, level, perfectModulesCount, powerUps, score, setIsSavingProgress, shuffledQuestions, streak, unlockedModules, xp, moduleCompletionTimes]);
 
   const resetProgress = useCallback(async () => {
-    const confirmReset = window.confirm(
-      '⚠️ Are you sure you want to reset all progress?\n\n' +
-      'This will delete:\n' +
-      '• Your score and level\n' +
-      '• All completed modules\n' +
-      '• All achievements\n' +
-      '• All answered questions\n\n' +
-      'This action cannot be undone!'
-    );
-
-    if (!confirmReset) return;
-
     try {
       if (!isGuest && currentUser?.id) {
         await clearGameProgress(currentUser.id);

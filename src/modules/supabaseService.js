@@ -155,7 +155,7 @@ export const getCurrentUser = async () => {
       // 1. Try game_progress table (New Source of Truth)
       const { data: gameProg, error: gameErr } = await supabase
         .from('game_progress')
-        .select('current_module, current_question, updated_at')
+        .select('current_module, current_question, last_saved')
         .eq('user_id', userId)
         .single();
 
@@ -163,7 +163,7 @@ export const getCurrentUser = async () => {
          return {
            moduleId: gameProg.current_module ?? 0,
            questionIndex: gameProg.current_question ?? 0,
-           ts: gameProg.updated_at,
+           ts: gameProg.last_saved,
            source: 'game_progress'
          };
       }
@@ -213,8 +213,7 @@ export const getCurrentUser = async () => {
       // Upsert into user_progress
       const payload = {
         user_id: userId,
-        progress_data: { last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, ts: now },
-        updated_at: now,
+        progress_data: { last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, ts: now }
       };
       const { error: upErr } = await supabase
         .from('user_progress')
@@ -224,7 +223,7 @@ export const getCurrentUser = async () => {
       // Best-effort update users table if the columns exist
       const { error: usersErr } = await supabase
         .from('users')
-        .update({ last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0, updated_at: now })
+        .update({ last_module_id: moduleId ?? 0, last_question_index: questionIndex ?? 0 })
         .eq('id', userId);
       if (usersErr && usersErr.code === '42703') {
         // Column does not exist; ignore silently
@@ -247,6 +246,8 @@ export const getCurrentUser = async () => {
  */
 export const saveGameProgress = async (userId, progressData) => {
   try {
+    console.log('📥 saveGameProgress called with userId:', userId);
+    
     if (!userId) throw new Error('User ID is required');
     if (!progressData) throw new Error('Progress payload is required');
 
@@ -275,15 +276,27 @@ export const saveGameProgress = async (userId, progressData) => {
       power_ups: progressData.powerUps ?? { skip: 3, hint: 3, eliminate: 3 },
       shuffled_questions: progressData.shuffledQuestions ?? {},
       module_completion_times: progressData.moduleCompletionTimes ?? {},
-      last_saved: now,
-      updated_at: now
+      last_saved: now
     };
 
-    const { error: progressError } = await supabase
-      .from('game_progress')
-      .upsert(payload, { onConflict: 'user_id' });
+    console.log('📤 Attempting to upsert game_progress with payload:', {
+      user_id: payload.user_id,
+      current_module: payload.current_module,
+      total_score: payload.total_score,
+      level: payload.level,
+    });
 
-    if (progressError) throw progressError;
+    const { data: upsertData, error: progressError } = await supabase
+      .from('game_progress')
+      .upsert(payload, { onConflict: 'user_id' })
+      .select();
+
+    if (progressError) {
+      console.error('❌ game_progress upsert error:', progressError);
+      throw progressError;
+    }
+    
+    console.log('✅ game_progress upsert successful:', upsertData);
 
     const lastCompletedModule = completedModules.length > 0
       ? Math.max(...completedModules)
@@ -297,8 +310,7 @@ export const saveGameProgress = async (userId, progressData) => {
         score: payload.total_score,
         streak: payload.streak,
         combo: payload.combo,
-        completed_modules: completedModules,
-        updated_at: now
+        completed_modules: completedModules
       })
       .eq('id', userId);
 
@@ -406,8 +418,7 @@ export const clearGameProgress = async (userId) => {
         score: 0,
         streak: 0,
         combo: 0,
-        completed_modules: [],
-        updated_at: new Date().toISOString()
+        completed_modules: []
       })
       .eq('id', userId);
 
@@ -1248,34 +1259,58 @@ export const updateUserProfile = async (userId, updates) => {
  */
 export const syncAllGameData = async (userId, gameState) => {
   try {
-    console.log('🔄 Syncing all game data...');
+    console.log('🔄 Syncing all game data for user:', userId);
+    console.log('📊 Game state to sync:', {
+      currentModule: gameState.currentModule,
+      currentQuestion: gameState.currentQuestion,
+      score: gameState.score,
+      level: gameState.level,
+      completedModulesCount: gameState.completedModules?.length || 0,
+    });
     
     // Save game progress
     const progressResult = await saveGameProgress(userId, gameState);
-    if (!progressResult.success) throw new Error(progressResult.error);
+    if (!progressResult.success) {
+      console.error('❌ saveGameProgress failed:', progressResult.error);
+      throw new Error(progressResult.error || 'Failed to save game progress');
+    }
+    
+    console.log('✅ Game progress saved successfully');
 
-    // Submit scores for all completed modules
-    for (const moduleIndex of gameState.completedModules || []) {
-      // Calculate module-specific data
-      const moduleQuestions = gameState.answeredQuestions || {};
-      let moduleCorrect = 0;
-      let moduleAnswered = 0;
+    // Submit scores for all completed modules (only if there are any)
+    const completedModules = gameState.completedModules || [];
+    if (completedModules.length > 0) {
+      console.log('📊 Syncing scores for', completedModules.length, 'completed modules');
       
-      Object.keys(moduleQuestions).forEach(key => {
-        if (key.startsWith(`${moduleIndex}-`)) {
-          moduleAnswered++;
-          if (moduleQuestions[key].wasCorrect) moduleCorrect++;
-        }
-      });
+      for (const moduleIndex of completedModules) {
+        try {
+          // Calculate module-specific data
+          const moduleQuestions = gameState.answeredQuestions || {};
+          let moduleCorrect = 0;
+          let moduleAnswered = 0;
+          
+          Object.keys(moduleQuestions).forEach(key => {
+            if (key.startsWith(`${moduleIndex}-`)) {
+              moduleAnswered++;
+              if (moduleQuestions[key]?.wasCorrect) moduleCorrect++;
+            }
+          });
 
-      await submitModuleScore(userId, {
-        moduleId: moduleIndex,
-        moduleName: `Module ${moduleIndex + 1}`, // You should pass actual module names
-        score: gameState.moduleScores?.[moduleIndex] || 0,
-        perfectCompletion: gameState.perfectModules?.includes(moduleIndex) || false,
-        questionsAnswered: moduleAnswered,
-        questionsCorrect: moduleCorrect
-      });
+          await submitModuleScore(userId, {
+            moduleId: moduleIndex,
+            moduleName: `Module ${moduleIndex + 1}`,
+            score: gameState.moduleScores?.[moduleIndex] || 0,
+            perfectCompletion: gameState.perfectModules?.includes(moduleIndex) || false,
+            questionsAnswered: moduleAnswered,
+            questionsCorrect: moduleCorrect
+          });
+        } catch (moduleError) {
+          // Log but don't fail the entire sync for individual module errors
+          console.warn(`⚠️ Failed to sync module ${moduleIndex}:`, moduleError.message);
+        }
+      }
+    } else {
+      console.log('ℹ️ No completed modules to sync scores for');
     }
 
     console.log('✅ All game data synced successfully');

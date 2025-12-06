@@ -317,34 +317,66 @@ const useQuestionFlow = ({
       setPerfectModule(false);
     }
 
-    // Save progress with the new calculated values
-    saveProgress({
-      answeredQuestions: updatedAnsweredQuestions,
-      score: newScore,
-      streak: newStreak,
-      combo: newCombo,
-      xp: newXp,
-      level: newLevel
-    });
+    // Save progress with the new calculated values (for authenticated users only here)
+    // Guests are handled separately below with the next question index
+    if (!isGuest) {
+      saveProgress({
+        answeredQuestions: updatedAnsweredQuestions,
+        score: newScore,
+        streak: newStreak,
+        combo: newCombo,
+        xp: newXp,
+        level: newLevel
+      });
+    }
 
     const totalQuestions = getTotalQuestions();
     const isLastQuestion = currentQuestion === totalQuestions - 1;
+    const currentQuestionIndex = currentQuestion; // Capture current value
+    const currentModuleIndex = currentModule; // Capture module value
+    const questionsLength = currentModuleQuestions.length;
 
     if (isLastQuestion) {
       stopTimer();
     }
 
+    // Calculate next question now, before timeout
+    const nextQ = currentQuestionIndex + 1;
+    const hasMoreQuestions = currentQuestionIndex < questionsLength - 1;
+
+    // Capture progress data for use inside setTimeout
+    const progressData = {
+      answeredQuestions: updatedAnsweredQuestions,
+      score: newScore,
+      streak: newStreak,
+      combo: newCombo,
+      xp: newXp,
+      level: newLevel,
+    };
+
     setTimeout(async () => {
-      if (currentQuestion < currentModuleQuestions.length - 1) {
-        const nextQ = currentQuestion + 1;
+      if (hasMoreQuestions) {
         setCurrentQuestion(nextQ);
-        persistLastLocation({ moduleId: currentModule, questionIndex: nextQ });
+        persistLastLocation({ moduleId: currentModuleIndex, questionIndex: nextQ });
         setShowFeedback(false);
         setSelectedAnswer(null);
+        
+        // For guests, save progress AFTER UI has moved to next question
+        // This ensures localStorage stays in sync with the actual displayed question
+        if (isGuest) {
+          saveProgress({
+            ...progressData,
+            currentQuestion: nextQ
+          });
+        }
       } else {
+        // For guests on last question, save progress before module completion
+        if (isGuest) {
+          saveProgress(progressData);
+        }
         await handleModuleCompletion(correct);
       }
-    }, 7000);
+    }, 5000);
   };
 
   const startNewModule = (moduleIndex) => {
@@ -386,6 +418,8 @@ const useQuestionFlow = ({
     setCurrentQuestion(0);
     setModuleScore(0);
     setPerfectModule(true);
+    setCombo(0);  // Reset combo when starting new module
+    setStreak(0); // Reset streak when starting new module
     setPowerUps((prev) => refreshPowerUps(prev));
     setShowFeedback(false);
     setSelectedAnswer(null);

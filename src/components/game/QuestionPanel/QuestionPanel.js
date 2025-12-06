@@ -1,5 +1,5 @@
 import React from 'react';
-import { Clock, CheckCircle, XCircle } from 'lucide-react';
+import { Clock, CheckCircle, XCircle, MessageCircleQuestion } from 'lucide-react';
 
 const QuestionPanel = ({
   moduleTitle,
@@ -18,6 +18,7 @@ const QuestionPanel = ({
   combo,
   streak,
   onAnswer,
+  onAskHelp,
 }) => {
   if (!questions?.length) return null;
 
@@ -74,9 +75,22 @@ const QuestionPanel = ({
       </div>
 
       <div className="mb-4">
-        <p className="text-white text-base md:text-lg lg:text-xl font-semibold">
-          {currentQuestion?.question}
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <p className="text-white text-base md:text-lg lg:text-xl font-semibold flex-1">
+            {currentQuestion?.question}
+          </p>
+          {/* Help Button - Opens chatbot with question context */}
+          {onAskHelp && !answeredQuestions[questionKey]?.answered && (
+            <button
+              onClick={onAskHelp}
+              className="flex items-center gap-2 px-3 py-2 bg-blue-600/30 hover:bg-blue-600/50 border border-blue-400/30 hover:border-blue-400/50 rounded-lg text-blue-300 hover:text-blue-200 transition-all duration-200 text-sm shrink-0 group"
+              title="Get help with this question from the AI assistant"
+            >
+              <MessageCircleQuestion className="w-4 h-4 group-hover:scale-110 transition-transform" />
+              <span className="hidden md:inline">Need help?</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

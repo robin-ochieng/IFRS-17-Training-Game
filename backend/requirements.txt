@@ -1,0 +1,41 @@
+# IFRS 17 Chatbot Backend - Python Dependencies
+# LangGraph RAG Application
+
+# Core LangChain & LangGraph
+langchain>=0.1.0
+langgraph>=0.0.40
+langchain-openai>=0.0.5
+langchain-community>=0.0.20
+
+# Vector Store & Embeddings
+chromadb>=0.4.22
+faiss-cpu>=1.7.4
+
+# Document Processing
+pypdf>=3.17.0
+python-docx>=1.1.0
+unstructured>=0.12.0
+
+# API Framework
+fastapi>=0.109.0
+uvicorn>=0.27.0
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+python-multipart>=0.0.6
+
+# Environment & Configuration
+python-dotenv>=1.0.0
+
+# HTTP Client
+httpx>=0.26.0
+aiohttp>=3.9.0
+
+# Utilities
+tiktoken>=0.5.2
+tenacity>=8.2.3
+
+# Development & Testing
+pytest>=7.4.0
+pytest-asyncio>=0.23.0
+black>=24.1.0
+isort>=5.13.0

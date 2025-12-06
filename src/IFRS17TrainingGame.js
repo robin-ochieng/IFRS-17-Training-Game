@@ -19,6 +19,10 @@ import ModuleCompleteModal from './components/game/ModuleCompleteModal';
 import AllModulesCompleteBanner from './components/game/AllModulesCompleteBanner';
 import AchievementsList from './components/game/AchievementsList';
 import QuestionPanel from './components/game/QuestionPanel/QuestionPanel';
+import ChatbotIcon from './components/ChatbotIcon';
+import ChatPanel from './components/ChatPanel';
+import ResetConfirmModal from './components/ResetConfirmModal';
+import NotificationModal from './components/NotificationModal';
 import useModuleTimer from './hooks/useModuleTimer';
 import useAchievements from './hooks/useAchievements';
 
@@ -78,7 +82,19 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [moduleCompletionTimes, setModuleCompletionTimes] = useState({});
   const [isSavingProgress, setIsSavingProgress] = useState(false);
   const [isBootingResume, setIsBootingResume] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [notification, setNotification] = useState({ isOpen: false, type: 'info', title: '', message: '' });
   const isCurrentModuleCompleted = completedModules.includes(currentModule);
+
+  // Handler for notifications from hooks
+  const handleNotification = useCallback(({ type, title, message }) => {
+    setNotification({ isOpen: true, type, title, message });
+  }, []);
+
+  const closeNotification = useCallback(() => {
+    setNotification(prev => ({ ...prev, isOpen: false }));
+  }, []);
 
   const navigateToModule = useCallback((moduleIndex, questionIndex = 0) => {
     if (moduleIndex < 0 || moduleIndex >= TOTAL_MODULES) return;
@@ -244,6 +260,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     },
     achievements,
     saveProgress,
+    onNotification: handleNotification,
   });
 
   // Don't render until currentUser is loaded
@@ -256,6 +273,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   }
 
   return (
+    <>
     <div className="min-h-screen p-4 bg-black/30 backdrop-blur-sm">
       <div className="max-w-6xl mx-auto">
         {/* Header with User Info */}
@@ -320,6 +338,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           moduleTitle={modules[currentModule]?.title}
           score={completedModuleScore}
           perfectModule={perfectModule}
+          completionTime={elapsedTime}
           hasNextModule={currentModule < modules.length - 1}
           onStartNext={() => {
             setShowModuleComplete(false);
@@ -350,6 +369,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             combo={combo}
             streak={streak}
             onAnswer={handleAnswer}
+            onAskHelp={() => setIsChatOpen(true)}
           />
         )}
 
@@ -384,12 +404,31 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         {/* Reset Progress Button */}
         <div className="mt-6 text-center">
           <button
-            onClick={resetProgress}
+            onClick={() => setShowResetModal(true)}
             className="bg-gray-800/50 hover:bg-red-600/30 border border-gray-600 hover:border-red-500 text-gray-400 hover:text-red-400 px-6 py-2 rounded-lg transition-all duration-300 text-sm"
           >
             ⚠️ Reset All Progress
           </button>
         </div>
+
+        {/* Reset Confirmation Modal */}
+        <ResetConfirmModal
+          isOpen={showResetModal}
+          onConfirm={() => {
+            resetProgress();
+            setShowResetModal(false);
+          }}
+          onCancel={() => setShowResetModal(false)}
+        />
+
+        {/* Notification Modal */}
+        <NotificationModal
+          isOpen={notification.isOpen}
+          onClose={closeNotification}
+          title={notification.title}
+          message={notification.message}
+          variant={notification.type}
+        />
 
       <div className="mt-6 mb-4">
         <div className="bg-gradient-to-br from-white/5 to-white/10 backdrop-blur-md rounded-xl p-6 border border-white/20 shadow-xl">
@@ -450,6 +489,32 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   <GameGuideFAQ isOpen={showGuide} onClose={() => setShowGuide(false)} />
       </div>
     </div>
+    
+    {/* Chatbot - Rendered outside main container for proper fixed positioning */}
+    <ChatbotIcon 
+      onClick={() => setIsChatOpen(!isChatOpen)}
+      isOpen={isChatOpen}
+    />
+    
+    <ChatPanel 
+      isOpen={isChatOpen}
+      onClose={() => setIsChatOpen(false)}
+      userName={currentUser?.name}
+      gameContext={{
+        currentModuleIndex: currentModule,
+        currentModuleTitle: modules[currentModule]?.title,
+        currentModuleIcon: modules[currentModule]?.icon,
+        currentQuestionIndex: currentQuestion,
+        currentQuestionText: modules[currentModule]?.questions[currentQuestion]?.question,
+        currentQuestionOptions: modules[currentModule]?.questions[currentQuestion]?.options,
+        currentQuestionExplanation: modules[currentModule]?.questions[currentQuestion]?.explanation,
+        isModuleCompleted: completedModules.includes(currentModule),
+        completedModules: completedModules.map(idx => modules[idx]?.title).filter(Boolean),
+        userLevel: level,
+        totalScore: score
+      }}
+    />
+  </>
   );
 };
 

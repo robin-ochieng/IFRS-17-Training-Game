@@ -12,6 +12,7 @@ const useGameUIActions = ({
   progressState,
   achievements,
   saveProgress,
+  onNotification,
 }) => {
   // Internal UI State
   const [showGuide, setShowGuide] = useState(false);
@@ -118,31 +119,50 @@ const useGameUIActions = ({
   const handleManualSync = useCallback(async () => {
     if (isGuest || !currentUserId) {
       console.log('⚠️ Cannot sync: User not authenticated');
+      if (onNotification) {
+        onNotification({
+          type: 'warning',
+          title: 'Sign In Required',
+          message: 'Please sign in to sync your progress.'
+        });
+      }
       return;
     }
 
-    console.log('🔄 Manual sync triggered...');
+    console.log('🔄 Manual sync triggered for user:', currentUserId);
 
     try {
       const moduleScores = {};
       const perfectModules = [];
 
-      completedModules.forEach((moduleIndex) => {
-        const moduleQuestions = Object.keys(answeredQuestions || {}).filter((key) =>
-          key.startsWith(`${moduleIndex}-`),
-        );
+      // Only process completed modules if there are any
+      if (completedModules && completedModules.length > 0) {
+        completedModules.forEach((moduleIndex) => {
+          const moduleQuestions = Object.keys(answeredQuestions || {}).filter((key) =>
+            key.startsWith(`${moduleIndex}-`),
+          );
 
-        const moduleCorrect = moduleQuestions.reduce(
-          (total, key) => (answeredQuestions[key].wasCorrect ? total + 1 : total),
-          0,
-        );
+          const moduleCorrect = moduleQuestions.reduce(
+            (total, key) => (answeredQuestions[key]?.wasCorrect ? total + 1 : total),
+            0,
+          );
 
-        if (moduleQuestions.length > 0 && moduleCorrect === moduleQuestions.length) {
-          perfectModules.push(moduleIndex);
-        }
+          if (moduleQuestions.length > 0 && moduleCorrect === moduleQuestions.length) {
+            perfectModules.push(moduleIndex);
+          }
 
-        const denominator = Math.max(completedModules.length, 1);
-        moduleScores[moduleIndex] = Math.floor(score / denominator);
+          const denominator = Math.max(completedModules.length, 1);
+          moduleScores[moduleIndex] = Math.floor(score / denominator);
+        });
+      }
+
+      console.log('📊 Sync data prepared:', {
+        currentModule,
+        currentQuestion,
+        score,
+        level,
+        completedModules,
+        moduleScores,
       });
 
       const syncResult = await syncAllGameData(currentUserId, {
@@ -151,34 +171,46 @@ const useGameUIActions = ({
         score,
         level,
         xp,
-        completedModules,
+        completedModules: completedModules || [],
         moduleScores,
         perfectModules,
-        answeredQuestions,
+        answeredQuestions: answeredQuestions || {},
         achievements: achievements.map((a) => a.id),
-        powerUps,
-        streak,
-        combo,
-        perfectModulesCount,
-        unlockedModules,
-        shuffledQuestions,
+        powerUps: powerUps || { skip: 3, hint: 3, eliminate: 3 },
+        streak: streak || 0,
+        combo: combo || 0,
+        perfectModulesCount: perfectModulesCount || 0,
+        unlockedModules: unlockedModules || [0],
+        shuffledQuestions: shuffledQuestions || {},
       });
 
       if (syncResult.success) {
         console.log('✅ Manual sync completed successfully');
-        if (typeof window !== 'undefined') {
-          window.alert?.('Progress synced successfully!');
+        if (onNotification) {
+          onNotification({
+            type: 'success',
+            title: 'Sync Complete',
+            message: 'Your progress has been synced successfully!'
+          });
         }
       } else {
-        console.error('❌ Manual sync failed');
-        if (typeof window !== 'undefined') {
-          window.alert?.('Failed to sync progress. Please try again.');
+        console.error('❌ Manual sync failed:', syncResult.error);
+        if (onNotification) {
+          onNotification({
+            type: 'error',
+            title: 'Sync Failed',
+            message: syncResult.error || 'Failed to sync progress. Please try again.'
+          });
         }
       }
     } catch (error) {
       console.error('❌ Error during manual sync:', error);
-      if (typeof window !== 'undefined') {
-        window.alert?.('An error occurred while syncing. Please try again.');
+      if (onNotification) {
+        onNotification({
+          type: 'error',
+          title: 'Sync Error',
+          message: error.message || 'An error occurred while syncing. Please try again.'
+        });
       }
     }
   }, [
@@ -191,6 +223,7 @@ const useGameUIActions = ({
     currentUserId,
     isGuest,
     level,
+    onNotification,
     perfectModulesCount,
     powerUps,
     score,
