@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { User, Mail, Building2, Globe2, Users, Lock, Eye, EyeOff, Loader2, ArrowRight, Briefcase } from 'lucide-react';
 import { signUpUser, signInUser } from '../modules/authService';
 
+
 const countries = [
     'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Argentina', 'Armenia',
     'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados',
