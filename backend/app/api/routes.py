@@ -17,7 +17,7 @@ from app.api.schemas import (
     HealthResponse,
     SourceDocument
 )
-from app.rag.vectorstore import get_document_count, add_documents, clear_vectorstore, similarity_search
+from app.rag.vectorstore import get_document_count, add_documents, clear_vectorstore, similarity_search, get_vectorstore_status
 from app.utils.document_loader import load_documents
 from app.utils.text_splitter import split_documents
 from app.core.graph import process_query
@@ -31,12 +31,13 @@ router = APIRouter()
 async def health_check():
     """Health check endpoint."""
     try:
-        doc_count = get_document_count()
+        status = get_vectorstore_status()
         return HealthResponse(
-            status="healthy",
+            status="healthy" if status["connected"] else "degraded",
             version="1.0.0",
-            vector_store_ready=doc_count > 0,
-            documents_count=doc_count
+            vector_store_ready=status["connected"] and status["document_count"] > 0,
+            documents_count=status["document_count"],
+            vector_store_type=status["type"]
         )
     except Exception as e:
         logger.error(f"Health check error: {e}")
@@ -44,7 +45,8 @@ async def health_check():
             status="degraded",
             version="1.0.0",
             vector_store_ready=False,
-            documents_count=0
+            documents_count=0,
+            vector_store_type="unknown"
         )
 
 

@@ -18,7 +18,18 @@
 .env.development.local
 .env.test.local
 .env.production.local
+backend/.env
 
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Python / Backend
+backend/venv*/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/**/__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+backend/data/chroma_db/

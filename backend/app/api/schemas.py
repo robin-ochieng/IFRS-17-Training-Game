@@ -73,3 +73,4 @@ class HealthResponse(BaseModel):
     version: str
     vector_store_ready: bool
     documents_count: int
+    vector_store_type: Optional[str] = Field(None, description="Type of vector store (supabase or chroma)")

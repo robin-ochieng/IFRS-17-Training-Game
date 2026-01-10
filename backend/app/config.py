@@ -2,8 +2,13 @@
 Application Configuration
 """
 import os
+import certifi
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
+
+# Fix SSL certificate path issues - set correct path from certifi
+os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+os.environ["SSL_CERT_FILE"] = certifi.where()
 
 load_dotenv()
 
@@ -15,8 +20,13 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
     
+    # Supabase Configuration (for pgvector)
+    SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
+    SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
+    SUPABASE_SERVICE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
+    
     # Vector Store Configuration
-    VECTOR_STORE_TYPE: str = os.getenv("VECTOR_STORE_TYPE", "chroma")
+    VECTOR_STORE_TYPE: str = os.getenv("VECTOR_STORE_TYPE", "supabase")  # 'supabase' or 'chroma'
     CHROMA_PERSIST_DIRECTORY: str = os.getenv("CHROMA_PERSIST_DIRECTORY", "./data/chroma_db")
     
     # Document Configuration
