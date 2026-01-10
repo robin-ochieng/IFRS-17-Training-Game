@@ -907,6 +907,7 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext }) => {
   const [error, setError] = useState(null);
   const [conversationId, setConversationId] = useState(null);
   const [isMaximized, setIsMaximized] = useState(false);
+  const [showFollowUps, setShowFollowUps] = useState(false);
   
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
@@ -1490,31 +1491,46 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext }) => {
           </div>
         )}
 
-        {/* Context-Aware Follow-up Suggestions (shown after responses) */}
+        {/* Context-Aware Follow-up Suggestions - Collapsible Dropdown */}
         {messages.length > 2 && !isLoading && getFollowUpSuggestions.length > 0 && (
-          <div className="px-4 py-2 border-t border-gray-100 bg-white">
-            <div className="flex items-center gap-2 mb-2">
-              <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-              <p className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Follow-up Questions</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              {getFollowUpSuggestions.map((suggestion, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => {
-                    setInputValue(suggestion.text);
-                    setTimeout(() => inputRef.current?.focus(), 100);
-                  }}
-                  className="group flex items-center gap-1.5 text-xs px-2.5 py-1.5 
-                    bg-amber-50 border border-amber-200 text-amber-800 rounded-lg
-                    hover:bg-amber-100 hover:border-amber-300 
-                    transition-all duration-200 shadow-sm hover:shadow"
-                >
-                  <suggestion.icon className="w-3 h-3 text-amber-500 group-hover:text-amber-600 transition-colors" />
-                  <span className="truncate max-w-[160px]">{suggestion.text}</span>
-                </button>
-              ))}
-            </div>
+          <div className="px-4 py-1.5 border-t border-gray-100 bg-white">
+            <button
+              onClick={() => setShowFollowUps(!showFollowUps)}
+              className="w-full flex items-center justify-between py-1 hover:bg-gray-50 rounded transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">
+                  Follow-up Questions ({getFollowUpSuggestions.length})
+                </span>
+              </div>
+              {showFollowUps ? (
+                <ChevronUp className="w-4 h-4 text-gray-400" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              )}
+            </button>
+            {showFollowUps && (
+              <div className="flex flex-wrap gap-1.5 pt-2 pb-1">
+                {getFollowUpSuggestions.map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setInputValue(suggestion.text);
+                      setShowFollowUps(false);
+                      setTimeout(() => inputRef.current?.focus(), 100);
+                    }}
+                    className="group flex items-center gap-1.5 text-xs px-2.5 py-1.5 
+                      bg-amber-50 border border-amber-200 text-amber-800 rounded-lg
+                      hover:bg-amber-100 hover:border-amber-300 
+                      transition-all duration-200 shadow-sm hover:shadow"
+                  >
+                    <suggestion.icon className="w-3 h-3 text-amber-500 group-hover:text-amber-600 transition-colors" />
+                    <span className="truncate max-w-[160px]">{suggestion.text}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
