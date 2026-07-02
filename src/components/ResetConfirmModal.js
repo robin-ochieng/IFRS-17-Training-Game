@@ -4,20 +4,27 @@
  */
 import React from 'react';
 import { AlertTriangle, X, Trash2, XCircle } from 'lucide-react';
+import ModalPortal from './ui/ModalPortal';
 
 const ResetConfirmModal = ({ isOpen, onConfirm, onCancel }) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <ModalPortal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onCancel}
       />
-      
+
       {/* Modal */}
-      <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-md mx-4 overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div
+        className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-md max-h-[92dvh] overflow-y-auto animate-in fade-in zoom-in duration-200"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Reset progress confirmation"
+      >
         {/* Header with warning color */}
         <div className="bg-gradient-to-r from-red-600/20 to-orange-600/20 border-b border-red-500/30 px-6 py-4">
           <div className="flex items-center justify-between">
@@ -87,6 +94,7 @@ const ResetConfirmModal = ({ isOpen, onConfirm, onCancel }) => {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

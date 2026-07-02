@@ -14,13 +14,14 @@ import {
   Target,
   Zap
 } from 'lucide-react';
-import { 
-  getOverallLeaderboard, 
-  getModuleLeaderboard, 
+import {
+  getOverallLeaderboard,
+  getModuleLeaderboard,
   getLeaderboardStats,
   subscribeToLeaderboard,
-  unsubscribeFromLeaderboard 
+  unsubscribeFromLeaderboard
 } from './supabaseService';
+import ModalPortal from '../components/ui/ModalPortal';
 
 const LeaderboardModal = ({ 
   isOpen, 
@@ -145,27 +146,34 @@ const LeaderboardModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden border border-purple-500/30 shadow-2xl">
+    <ModalPortal>
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+      <div
+        className="bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 rounded-2xl max-w-6xl w-full max-h-[92dvh] flex flex-col overflow-hidden border border-purple-500/30 shadow-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Leaderboard"
+      >
         {/* Header */}
-        <div className="bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm p-6 border-b border-white/10">
-          <div className="flex justify-between items-start">
-            <div className="flex items-center gap-4">
-              <div className="p-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl">
-                <Trophy className="w-8 h-8 text-white" />
+        <div className="flex-shrink-0 bg-gradient-to-r from-purple-600/20 to-blue-600/20 backdrop-blur-sm p-4 sm:p-6 border-b border-white/10">
+          <div className="flex justify-between items-start gap-3">
+            <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div className="p-2.5 sm:p-3 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-xl flex-shrink-0">
+                <Trophy className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
               </div>
-              <div>
-                <h2 className="text-3xl font-bold text-white">
+              <div className="min-w-0">
+                <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">
                   {activeTab === 'overall' ? 'IFRS17 Game Leaderboard' : `${modules[activeTab]?.title || 'Module'} Leaderboard`}
                 </h2>
-                <p className="text-gray-300 mt-1">
+                <p className="text-gray-300 mt-1 text-sm sm:text-base">
                   Compete with players worldwide
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors flex-shrink-0"
+              aria-label="Close leaderboard"
             >
               <X className="w-6 h-6 text-gray-400 hover:text-white" />
             </button>
@@ -173,7 +181,7 @@ const LeaderboardModal = ({
 
           {/* Stats Bar */}
           {showStats && stats && (
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 sm:gap-3 mt-4">
               <div className="bg-white/5 rounded-lg p-3">
                 <div className="flex items-center gap-2 text-blue-400 mb-1">
                   <Users className="w-4 h-4" />
@@ -214,7 +222,7 @@ const LeaderboardModal = ({
         </div>
 
         {/* Tab Navigation */}
-        <div className="bg-black/30 backdrop-blur-sm border-b border-white/10 px-6 py-3">
+        <div className="flex-shrink-0 bg-black/30 backdrop-blur-sm border-b border-white/10 px-4 sm:px-6 py-3">
           <div className="flex items-center justify-between">
             <div className="flex gap-2 overflow-x-auto pb-2">
               <button
@@ -272,9 +280,9 @@ const LeaderboardModal = ({
 
         {/* User Position Card */}
         {(userPosition || leaderboardData.find(u => u.isCurrentUser)) && (
-          <div className="mx-6 mt-4">
+          <div className="flex-shrink-0 mx-4 sm:mx-6 mt-4">
             <div className="bg-gradient-to-r from-purple-600/30 to-pink-600/30 backdrop-blur-sm rounded-xl p-4 border border-purple-400/50">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-4">
                   <div className={`w-14 h-14 rounded-full bg-gradient-to-br ${
                     getRankDisplay(userPosition?.rank || leaderboardData.findIndex(u => u.isCurrentUser) + 1).color
@@ -287,7 +295,7 @@ const LeaderboardModal = ({
                     <p className="text-gray-400 text-sm">{currentUser?.organization}</p>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-right">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-left sm:text-right">
                   <div>
                     <p className="text-gray-400 text-xs">Score</p>
                     <p className="text-yellow-400 font-bold text-lg">
@@ -318,8 +326,8 @@ const LeaderboardModal = ({
           </div>
         )}
 
-        {/* Leaderboard List */}
-        <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 400px)' }}>
+        {/* Leaderboard List — flex-1 fills remaining panel height, scrolls internally */}
+        <div className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto overscroll-contain">
           {isLoading ? (
             <div className="flex items-center justify-center h-64">
               <div className="text-white text-lg animate-pulse">Loading leaderboard...</div>
@@ -346,40 +354,40 @@ const LeaderboardModal = ({
                         : 'bg-white/5 hover:bg-white/10 border border-white/10'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                         {/* Rank Badge */}
-                        <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${rankDisplay.color} 
-                          flex items-center justify-center text-white font-bold text-lg shadow-lg`}>
+                        <div className={`w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-full bg-gradient-to-br ${rankDisplay.color}
+                          flex items-center justify-center text-white font-bold text-base sm:text-lg shadow-lg`}>
                           {rankDisplay.icon}
                         </div>
                         
                         {/* User Info */}
-                        <div className="flex items-center gap-3">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center 
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className={`w-10 h-10 flex-shrink-0 rounded-full flex items-center justify-center
                             text-white font-bold bg-gradient-to-br ${
-                            entry.isCurrentUser 
-                              ? 'from-purple-500 to-pink-500' 
+                            entry.isCurrentUser
+                              ? 'from-purple-500 to-pink-500'
                               : 'from-blue-500 to-indigo-500'
                           }`}>
                             {entry.displayAvatar}
                           </div>
-                          <div>
-                            <p className="text-white font-semibold flex items-center gap-2">
-                              {entry.displayName}
+                          <div className="min-w-0">
+                            <p className="text-white font-semibold flex items-center gap-2 min-w-0">
+                              <span className="truncate">{entry.displayName}</span>
                               {entry.isCurrentUser && (
-                                <span className="text-xs bg-purple-600 px-2 py-0.5 rounded-full">You</span>
+                                <span className="text-xs bg-purple-600 px-2 py-0.5 rounded-full flex-shrink-0">You</span>
                               )}
                               {activeTab !== 'overall' && entry.perfect_completion && (
-                                <Star className="w-4 h-4 text-yellow-400" />
+                                <Star className="w-4 h-4 text-yellow-400 flex-shrink-0" />
                               )}
                             </p>
-                            <div className="flex items-center gap-3 text-sm">
-                              <p className="text-gray-400">{entry.organization || 'Independent'}</p>
+                            <div className="flex items-center gap-3 text-sm min-w-0">
+                              <p className="text-gray-400 truncate">{entry.organization || 'Independent'}</p>
                               {entry.country && entry.country !== 'Unknown' && (
                                 <>
-                                  <span className="text-gray-600">•</span>
-                                  <div className="flex items-center gap-1">
+                                  <span className="text-gray-600 hidden sm:inline">•</span>
+                                  <div className="hidden sm:flex items-center gap-1 flex-shrink-0">
                                     <Globe className="w-3 h-3 text-gray-500" />
                                     <p className="text-gray-400">{entry.country}</p>
                                   </div>
@@ -391,7 +399,7 @@ const LeaderboardModal = ({
                       </div>
                       
                       {/* Stats */}
-                      <div className="flex items-center gap-6">
+                      <div className="flex items-center gap-4 sm:gap-6 flex-shrink-0">
                         <div className="text-center">
                           <p className="text-yellow-400 font-bold text-lg">
                             {(entry.score || 0).toLocaleString()}
@@ -456,13 +464,13 @@ const LeaderboardModal = ({
         </div>
 
         {/* Footer */}
-        <div className="bg-black/30 backdrop-blur-sm border-t border-white/10 px-6 py-4">
-          <div className="flex items-center justify-between">
-            <p className="text-gray-400 text-sm">
+        <div className="flex-shrink-0 bg-black/30 backdrop-blur-sm border-t border-white/10 px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+            <p className="text-gray-400 text-xs sm:text-sm">
               {lastRefresh && `Last updated: ${lastRefresh.toLocaleTimeString()}`}
               {realtimeSubscription && ' • Live updates enabled'}
             </p>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center flex-wrap gap-2 text-xs sm:text-sm">
               <span className="text-gray-400">Showing top {leaderboardData.length} players</span>
               {getUserPercentile() && (
                 <span className="text-purple-400 font-semibold">
@@ -474,6 +482,7 @@ const LeaderboardModal = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

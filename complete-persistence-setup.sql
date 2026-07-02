@@ -95,6 +95,10 @@ ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS achievements JSONB DEF
 ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS power_ups JSONB DEFAULT '{"skip": 3, "hint": 3, "eliminate": 3}'::jsonb;
 ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS shuffled_questions JSONB DEFAULT '{}'::jsonb;
 ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS module_completion_times JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS last_saved TIMESTAMPTZ DEFAULT NOW();
+-- updated_at is required by the update_game_progress_updated_at trigger below;
+-- without it every UPDATE fails with: record "new" has no field "updated_at"
+ALTER TABLE public.game_progress ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
 
 -- Enable RLS
 ALTER TABLE public.game_progress ENABLE ROW LEVEL SECURITY;
