@@ -1,5 +1,6 @@
 // src/modules/authService.js
 import supabase from './supabaseService';
+import { INITIAL_POWER_UPS } from './powerUps';
 
 // Storage keys
 const CURRENT_USER_KEY = 'ifrs17_current_user';
@@ -115,7 +116,7 @@ export const signUpUser = async ({
         unlocked_modules: [0],
         answered_questions: {},
         achievements: [],
-        power_ups: { skip: 3, hint: 3, eliminate: 3 },
+        power_ups: { ...INITIAL_POWER_UPS },
         shuffled_questions: {},
         last_saved: new Date().toISOString()
       }]);

@@ -16,6 +16,12 @@ export const GAME_CONFIG = {
     expert: 50
   },
 
+  // Per-module power-up allowance. Reset to full at every module start.
+  POWER_UPS: {
+    eliminate: 2,
+    hint: 3
+  },
+
   // Storage keys
   STORAGE_KEYS: {
     GUEST_USER: 'kb.guest.id',

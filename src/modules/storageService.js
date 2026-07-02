@@ -1,9 +1,10 @@
 // src/modules/storageService.js
-import { 
-  saveGameProgress, 
-  loadGameProgress, 
-  clearGameProgress 
+import {
+  saveGameProgress,
+  loadGameProgress,
+  clearGameProgress
 } from '../modules/supabaseService';
+import { sanitizePowerUps } from './powerUps';
 
 let STORAGE_KEY = 'ifrs17-progress';
 let CURRENT_USER_ID = null;
@@ -79,7 +80,7 @@ export const saveGameState = async (gameState) => {
       achievements: Array.isArray(gameState.achievements) 
         ? gameState.achievements.map(a => typeof a === 'string' ? a : a.id)
         : [],
-      powerUps: gameState.powerUps || { skip: 3, hint: 3, eliminate: 3 },
+      powerUps: sanitizePowerUps(gameState.powerUps),
       shuffledQuestions: gameState.shuffledQuestions || {},
       timestamp: new Date().toISOString()
     };
@@ -133,7 +134,7 @@ export const loadGameState = async () => {
           unlockedModules: dbProgress.unlocked_modules || [0],
           answeredQuestions: dbProgress.answered_questions || {},
           achievements: dbProgress.achievements || [],
-          powerUps: dbProgress.power_ups || { skip: 3, hint: 3, eliminate: 3 },
+          powerUps: sanitizePowerUps(dbProgress.power_ups),
           shuffledQuestions: dbProgress.shuffled_questions || {},
           timestamp: dbProgress.last_saved
         };

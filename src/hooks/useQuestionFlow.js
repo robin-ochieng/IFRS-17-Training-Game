@@ -420,7 +420,7 @@ const useQuestionFlow = ({
     setPerfectModule(true);
     setCombo(0);  // Reset combo when starting new module
     setStreak(0); // Reset streak when starting new module
-    setPowerUps((prev) => refreshPowerUps(prev));
+    setPowerUps(refreshPowerUps());
     setShowFeedback(false);
     setSelectedAnswer(null);
 

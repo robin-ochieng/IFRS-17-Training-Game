@@ -1,52 +1,53 @@
 // src/modules/powerUps.js
+// Power-up definitions and state helpers. Allowance lives in GAME_CONFIG.POWER_UPS.
+import { GAME_CONFIG } from '../config/gameConfig';
 
-// Initial power-up configuration
-export const INITIAL_POWER_UPS = {
-  skip: 2
-};
-
-// Power-up refresh amounts when starting new module
-export const POWER_UP_REFRESH = {
-  skip: 1
-};
-
-// Maximum power-up limits
-export const POWER_UP_MAX = {
-  skip: 2
-};
+export const INITIAL_POWER_UPS = { ...GAME_CONFIG.POWER_UPS };
 
 // Check if a power-up can be used
 export const canUsePowerUp = (powerUps, type) => {
-  return powerUps[type] > 0;
+  return powerUps?.[type] > 0;
 };
 
 // Use a power-up (decrease count)
 export const consumePowerUp = (powerUps, type) => {
   if (!canUsePowerUp(powerUps, type)) return powerUps;
-  
+
   return {
     ...powerUps,
     [type]: powerUps[type] - 1
   };
 };
 
-// Refresh power-ups when starting a new module
-export const refreshPowerUps = (currentPowerUps) => {
-  return {
-    skip: Math.min(currentPowerUps.skip + POWER_UP_REFRESH.skip, POWER_UP_MAX.skip)
-  };
+// Full allowance at every module start — no carry-over between modules.
+export const refreshPowerUps = () => ({ ...GAME_CONFIG.POWER_UPS });
+
+// Saved progress may predate the current power-up set (e.g. contain "skip").
+// Keep only known keys, clamp to the allowance, default anything invalid.
+export const sanitizePowerUps = (saved) => {
+  const clean = { ...GAME_CONFIG.POWER_UPS };
+  if (saved && typeof saved === 'object') {
+    Object.keys(clean).forEach((type) => {
+      const value = saved[type];
+      if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+        clean[type] = Math.min(value, GAME_CONFIG.POWER_UPS[type]);
+      }
+    });
+  }
+  return clean;
 };
 
 // Power-up effects
 export const POWER_UP_EFFECTS = {
-  skip: {
-    name: 'Skip',
-    icon: '⏭️',
-    description: 'Skip this question and move to the next',
-    action: () => {
-      // Skip logic is handled in the main component
-      return true;
-    }
+  eliminate: {
+    name: 'Eliminate',
+    icon: '✂️',
+    description: 'Remove two wrong options from the current question'
+  },
+  hint: {
+    name: 'Hint',
+    icon: '💡',
+    description: 'Ask the AI assistant for a hint about the current question'
   }
 };
 

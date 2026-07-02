@@ -1,6 +1,7 @@
 /* global globalThis */
 // supabaseService.js
 import { createClient } from '@supabase/supabase-js';
+import { INITIAL_POWER_UPS, sanitizePowerUps } from './powerUps';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
@@ -273,7 +274,7 @@ export const saveGameProgress = async (userId, progressData) => {
       unlocked_modules: unlockedModules,
       answered_questions: progressData.answeredQuestions ?? {},
       achievements: progressData.achievements ?? [],
-      power_ups: progressData.powerUps ?? { skip: 3, hint: 3, eliminate: 3 },
+      power_ups: sanitizePowerUps(progressData.powerUps),
       shuffled_questions: progressData.shuffledQuestions ?? {},
       module_completion_times: progressData.moduleCompletionTimes ?? {},
       last_saved: now
@@ -361,7 +362,7 @@ export const loadGameProgress = async (userId) => {
         unlocked_modules: [0],
         answered_questions: {},
         achievements: [],
-        power_ups: { skip: 3, hint: 3, eliminate: 3 },
+        power_ups: { ...INITIAL_POWER_UPS },
         shuffled_questions: {},
         module_completion_times: {},
         last_saved: new Date().toISOString()

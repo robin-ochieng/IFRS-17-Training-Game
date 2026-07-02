@@ -1,5 +1,6 @@
 // src/modules/supabaseUserService.js
 import supabase from './supabaseService';
+import { INITIAL_POWER_UPS, sanitizePowerUps } from './powerUps';
 
 // Storage key constants
 const CURRENT_USER_KEY = 'ifrs17_current_user';
@@ -109,7 +110,7 @@ export const createUserInSupabase = async (userData) => {
         unlocked_modules: [0],
         answered_questions: {},
         achievements: [],
-        power_ups: { skip: 3, hint: 3, eliminate: 3 },
+        power_ups: { ...INITIAL_POWER_UPS },
         shuffled_questions: {},
         last_saved: new Date().toISOString()
       }]);
@@ -393,7 +394,7 @@ export const migrateUsersToSupabase = async () => {
                   unlocked_modules: progress.unlockedModules || [0],
                   answered_questions: progress.answeredQuestions || {},
                   achievements: progress.achievements || [],
-                  power_ups: progress.powerUps || { skip: 3, hint: 3, eliminate: 3 },
+                  power_ups: sanitizePowerUps(progress.powerUps),
                   shuffled_questions: progress.shuffledQuestions || {},
                   last_saved: new Date().toISOString()
                 });
