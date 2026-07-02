@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # OpenAI Configuration
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4-turbo-preview")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     
     # Supabase Configuration (for pgvector)
     SUPABASE_URL: str = os.getenv("SUPABASE_URL", "")
