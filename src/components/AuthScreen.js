@@ -34,8 +34,8 @@ const countries = [
     'Yemen', 'Zambia', 'Zimbabwe'
 ].sort();
 
-const AuthScreen = ({ onLogin }) => {
-  const [isSignUp, setIsSignUp] = useState(false);
+const AuthScreen = ({ onLogin, initialMode = 'signin' }) => {
+  const [isSignUp, setIsSignUp] = useState(initialMode === 'signup');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
