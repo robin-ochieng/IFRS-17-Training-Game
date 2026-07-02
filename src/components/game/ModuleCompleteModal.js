@@ -1,5 +1,6 @@
 import React from 'react';
 import { Trophy, Star, Sparkles, ArrowRight, Award, Clock } from 'lucide-react';
+import ModalPortal from '../ui/ModalPortal';
 
 const ModuleCompleteModal = ({
   isOpen,
@@ -22,14 +23,20 @@ const ModuleCompleteModal = ({
   };
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
       <div className="relative w-full max-w-md mx-auto">
         {/* Decorative background elements */}
         <div className="absolute -top-10 -left-10 w-32 h-32 bg-yellow-500/20 rounded-full blur-3xl animate-pulse" />
         <div className="absolute -bottom-10 -right-10 w-32 h-32 bg-purple-500/20 rounded-full blur-3xl animate-pulse" />
-        
+
         {/* Main card */}
-        <div className="relative bg-gradient-to-b from-gray-900/95 to-black/95 backdrop-blur-xl rounded-3xl border border-white/10 overflow-hidden shadow-2xl">
+        <div
+          className="relative bg-gradient-to-b from-gray-900/95 to-black/95 backdrop-blur-xl rounded-3xl border border-white/10 max-h-[92dvh] overflow-y-auto overscroll-contain shadow-2xl"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Module complete"
+        >
           {/* Top accent bar */}
           <div className="h-1.5 bg-gradient-to-r from-yellow-400 via-purple-500 to-pink-500" />
           
@@ -133,6 +140,7 @@ const ModuleCompleteModal = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

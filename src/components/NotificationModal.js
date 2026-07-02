@@ -4,6 +4,7 @@
  */
 import React, { useEffect } from 'react';
 import { X, CheckCircle, XCircle, AlertTriangle, Info } from 'lucide-react';
+import ModalPortal from './ui/ModalPortal';
 
 const VARIANTS = {
   success: {
@@ -60,15 +61,21 @@ const NotificationModal = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <ModalPortal>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div 
+      <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
-      
+
       {/* Modal */}
-      <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-sm mx-4 overflow-hidden animate-in fade-in zoom-in duration-200">
+      <div
+        className="relative bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl shadow-2xl border border-gray-700 w-full max-w-sm max-h-[92dvh] overflow-y-auto animate-in fade-in zoom-in duration-200"
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+      >
         {/* Header */}
         <div className={`bg-gradient-to-r ${variantStyles.bgColor} border-b ${variantStyles.borderColor} px-5 py-4`}>
           <div className="flex items-center justify-between">
@@ -103,6 +110,7 @@ const NotificationModal = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

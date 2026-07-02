@@ -1,6 +1,7 @@
 // src/components/AuthenticationModal.js
 import React from 'react';
 import { X, LogIn, UserPlus, Trophy, Star, Zap, Sparkles } from 'lucide-react';
+import ModalPortal from './ui/ModalPortal';
 
 const AuthenticationModal = ({ 
   isOpen, 
@@ -12,8 +13,14 @@ const AuthenticationModal = ({
   if (!isOpen) return null;
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 bg-black/85 backdrop-blur-md flex items-center justify-center z-50 p-4">
-      <div className="relative bg-black/60 backdrop-blur-xl rounded-3xl w-full max-w-lg mx-4 sm:mx-auto p-6 sm:p-10 border border-white/20 shadow-2xl shadow-purple-500/10">
+      <div
+        className="relative bg-black/60 backdrop-blur-xl rounded-3xl w-full max-w-lg p-6 sm:p-10 border border-white/20 shadow-2xl shadow-purple-500/10 max-h-[92dvh] overflow-y-auto overscroll-contain"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Sign up to unlock all modules"
+      >
         {/* Decorative glow effects */}
         <div className="absolute -top-20 -left-20 w-40 h-40 bg-purple-600/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-20 -right-20 w-40 h-40 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
@@ -118,6 +125,7 @@ const AuthenticationModal = ({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 

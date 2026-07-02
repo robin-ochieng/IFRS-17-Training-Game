@@ -1,6 +1,7 @@
 // src/components/GameGuideFAQ.js
 import React from 'react';
 import { X, HelpCircle, BookOpen, Trophy, Zap, Timer, Layers, Cloud, ShieldQuestion } from 'lucide-react';
+import ModalPortal from './ui/ModalPortal';
 
 const Section = ({ icon: Icon, title, children }) => (
   <div className="bg-black/20 border border-white/10 rounded-xl p-3 md:p-5">
@@ -25,16 +26,17 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full sm:max-w-lg md:max-w-2xl lg:max-w-3xl bg-gradient-to-br from-gray-900 to-blue-900 border border-purple-500/30 rounded-xl md:rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full sm:max-w-lg md:max-w-2xl lg:max-w-3xl max-h-[92dvh] flex flex-col bg-gradient-to-br from-gray-900 to-blue-900 border border-purple-500/30 rounded-xl md:rounded-2xl shadow-2xl overflow-hidden"
         role="dialog"
         aria-modal="true"
         aria-labelledby="guide-title"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10">
+        <div className="flex-shrink-0 flex items-center justify-between px-4 md:px-6 py-3 md:py-4 border-b border-white/10">
           <div className="flex items-center gap-2">
             <HelpCircle className="w-5 h-5 text-purple-300" />
             <h2 id="guide-title" className="text-white text-lg md:text-2xl font-bold">Game Guide & FAQ</h2>
@@ -44,8 +46,8 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
           </button>
         </div>
 
-        {/* Content */}
-        <div className="max-h-[78vh] md:max-h-[72vh] overflow-y-auto overscroll-contain p-4 md:p-6 space-y-4 md:space-y-5">
+        {/* Content — fills remaining panel height and scrolls internally */}
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 md:p-6 space-y-4 md:space-y-5">
           <Section icon={BookOpen} title="Quick Start">
             <ul className="list-disc list-inside space-y-1">
               <li>Start with Module 1. It’s open to everyone.</li>
@@ -113,6 +115,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 };
 
