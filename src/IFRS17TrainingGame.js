@@ -457,6 +457,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         <ResetConfirmModal
           isOpen={showResetModal}
           onConfirm={() => {
+            setEliminatedOptions({});
+            setHintUsedQuestions({});
+            setPendingChatMessage(null);
             resetProgress();
             setShowResetModal(false);
           }}

@@ -939,13 +939,15 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext, pendingMessage, onP
   }, [isOpen]);
 
   // Auto-send a message queued by the game (e.g. the Hint power-up).
+  // isLoading is a dependency so a message that arrives mid-stream is sent
+  // as soon as the current response finishes instead of being dropped.
   useEffect(() => {
     if (isOpen && pendingMessage?.text && !isLoading) {
       sendMessageWithContent(pendingMessage.text);
       onPendingMessageConsumed?.();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, pendingMessage?.id]);
+  }, [isOpen, pendingMessage?.id, isLoading]);
 
   const sendMessageWithContent = async (content) => {
     const trimmed = (content || '').trim();
