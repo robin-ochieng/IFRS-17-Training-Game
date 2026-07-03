@@ -7,7 +7,7 @@ import {
   trackGuestEvent,
   migrateGuestToAuthenticatedUser,
 } from '../modules/guestUserService';
-import { INITIAL_POWER_UPS } from '../modules/powerUps';
+import { INITIAL_POWER_UPS, sanitizePowerUps } from '../modules/powerUps';
 import {
   saveGameState,
   setStorageUser,
@@ -187,7 +187,7 @@ const useGamePersistence = ({
             : []
         );
         setAnsweredQuestions(savedState.answeredQuestions || {});
-        setPowerUps(savedState.powerUps || INITIAL_POWER_UPS);
+        setPowerUps(sanitizePowerUps(savedState.powerUps));
         setStreak(savedState.streak || 0);
         setCombo(savedState.combo || 0);
         setPerfectModulesCount(savedState.perfectModulesCount || 0);
@@ -318,7 +318,7 @@ const useGamePersistence = ({
       setCurrentQuestion(data.current_question ?? 0);
       
       setAnsweredQuestions(data.answered_questions || {});
-      setPowerUps(data.power_ups || INITIAL_POWER_UPS);
+      setPowerUps(sanitizePowerUps(data.power_ups));
       setShuffledQuestions(data.shuffled_questions || {});
       setModuleCompletionTimes(data.module_completion_times || {});
 
@@ -379,7 +379,7 @@ const useGamePersistence = ({
           setCompletedModules(mergedProgress.completedModules || []);
           setUnlockedModules(mergedProgress.unlockedModules || [0, 1]);
           setAnsweredQuestions(mergedProgress.answeredQuestions || {});
-          setPowerUps(mergedProgress.powerUps || INITIAL_POWER_UPS);
+          setPowerUps(sanitizePowerUps(mergedProgress.powerUps));
           setShuffledQuestions(mergedProgress.shuffledQuestions || {});
           setModuleCompletionTimes(mergedProgress.moduleCompletionTimes || {});
           restoreAchievements(mergedProgress.achievements);

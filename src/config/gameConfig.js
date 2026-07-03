@@ -6,7 +6,22 @@ export const GAME_CONFIG = {
   // When true, users can play Module 1 without authentication
   // Authentication is only required to access Module 2+
   ENABLE_DEFERRED_AUTH: true,
-  
+
+  // XP awarded per correct answer, by question difficulty.
+  // Score (10 * (combo + 1)) is intentionally NOT difficulty-weighted so
+  // existing leaderboard entries stay comparable.
+  XP_BY_DIFFICULTY: {
+    beginner: 25,
+    standard: 35,
+    expert: 50
+  },
+
+  // Per-module power-up allowance. Reset to full at every module start.
+  POWER_UPS: {
+    eliminate: 2,
+    hint: 3
+  },
+
   // Storage keys
   STORAGE_KEYS: {
     GUEST_USER: 'kb.guest.id',

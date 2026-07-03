@@ -3,15 +3,7 @@ import { GAME_CONFIG } from '../config/gameConfig';
 import { refreshPowerUps } from '../modules/powerUps';
 import { saveGuestProgress, trackGuestEvent } from '../modules/guestUserService';
 import { submitModuleScore } from '../modules/supabaseService';
-
-const shuffleArray = (array = []) => {
-  const copy = [...array];
-  for (let i = copy.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [copy[i], copy[j]] = [copy[j], copy[i]];
-  }
-  return copy;
-};
+import { prepareModuleQuestions, getXpForDifficulty } from '../modules/questionUtils';
 
 const useQuestionFlow = ({
   modules,
@@ -86,13 +78,7 @@ const useQuestionFlow = ({
       return shuffledQuestions[moduleIndex];
     }
 
-    const originalQuestions = moduleDef.questions || [];
-    const prepared = shuffleArray(
-      originalQuestions.map((q, index) => ({
-        ...q,
-        originalIndex: index,
-      })),
-    );
+    const prepared = prepareModuleQuestions(moduleDef.questions || []);
 
     setShuffledQuestions((prev) => ({
       ...prev,
@@ -293,7 +279,7 @@ const useQuestionFlow = ({
       newScore = score + points;
       newStreak = streak + 1;
       newCombo = combo + 1;
-      newXp = xp + 25;
+      newXp = xp + getXpForDifficulty(currentQuestionData.difficulty);
 
       setScore(newScore);
       setModuleScore((prev) => prev + points);
@@ -401,13 +387,7 @@ const useQuestionFlow = ({
       delete updatedAnsweredQuestions[`${moduleIndex}-${i}`];
     }
 
-    const originalQuestions = modules[moduleIndex].questions;
-    const shuffled = shuffleArray(
-      originalQuestions.map((q, index) => ({
-        ...q,
-        originalIndex: index,
-      })),
-    );
+    const shuffled = prepareModuleQuestions(modules[moduleIndex].questions);
     setShuffledQuestions((prev) => ({
       ...prev,
       [moduleIndex]: shuffled,
@@ -420,7 +400,7 @@ const useQuestionFlow = ({
     setPerfectModule(true);
     setCombo(0);  // Reset combo when starting new module
     setStreak(0); // Reset streak when starting new module
-    setPowerUps((prev) => refreshPowerUps(prev));
+    setPowerUps(refreshPowerUps());
     setShowFeedback(false);
     setSelectedAnswer(null);
 

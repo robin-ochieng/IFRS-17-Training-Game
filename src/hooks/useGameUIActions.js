@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { GAME_CONFIG } from '../config/gameConfig';
 import { trackGuestEvent, hasGuestCompletedModule1 } from '../modules/guestUserService';
 import { signOut, syncAllGameData } from '../modules/supabaseService';
+import { sanitizePowerUps } from '../modules/powerUps';
 
 const useGameUIActions = ({
   onShowAuth,
@@ -176,7 +177,7 @@ const useGameUIActions = ({
         perfectModules,
         answeredQuestions: answeredQuestions || {},
         achievements: achievements.map((a) => a.id),
-        powerUps: powerUps || { skip: 3, hint: 3, eliminate: 3 },
+        powerUps: sanitizePowerUps(powerUps),
         streak: streak || 0,
         combo: combo || 0,
         perfectModulesCount: perfectModulesCount || 0,
