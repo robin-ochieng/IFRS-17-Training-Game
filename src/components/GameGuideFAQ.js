@@ -59,7 +59,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
           <Section icon={Trophy} title="Scoring Primer">
             <p className="mb-2">Each correct answer awards <span className="text-white font-semibold">10 × (combo + 1)</span>.</p>
             <p className="mb-2">Example: if you’re on a 3‑in‑a‑row combo, a correct answer gives <span className="text-white font-semibold">10 × (3 + 1) = 40</span> points.</p>
-            <p>XP: You gain <span className="text-white font-semibold">25 XP</span> per correct answer. Level up when XP reaches <span className="text-white font-semibold">level × 100</span>.</p>
+            <p>XP: You gain XP for every correct answer — <span className="text-white font-semibold">25 for Beginner, 35 for Standard, and 50 for Expert</span> questions. Level up when XP reaches <span className="text-white font-semibold">level × 100</span>.</p>
           </Section>
 
           <Section icon={Zap} title="Power‑ups">
@@ -84,7 +84,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
           <Section icon={ShieldQuestion} title="FAQ">
             <QA q="How do I score points?">Each correct answer awards 10 × (combo + 1). Keep answering correctly to build combo and streak for higher points.</QA>
             <QA q="What’s a “Perfect Module”?">Completing a module without any wrong answers. You’ll see a “Perfect” highlight on completion and in leaderboards.</QA>
-            <QA q="How does leveling work?">You gain 25 XP per correct answer. Level up when XP reaches level × 100.</QA>
+            <QA q="How does leveling work?">You gain XP for every correct answer — 25 for Beginner, 35 for Standard, and 50 for Expert questions. Level up when XP reaches level × 100.</QA>
             <QA q="What are power‑ups and how do they work?">Eliminate removes two wrong options; Hint asks the AI assistant for a nudge without revealing the answer. Availability is limited per module and resets when a new module starts. Using power-ups never breaks a perfect run.</QA>
             <QA q="When does the timer start?">The timer starts when you submit your first answer in a module and stops when the module ends.</QA>
             <QA q="Why are only some modules available to me?">Guests can play Module 1. Sign in to unlock more modules and sync progress across devices.</QA>

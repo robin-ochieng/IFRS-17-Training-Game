@@ -963,7 +963,6 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext, pendingMessage, onP
     const assistantMessageId = `assistant-${Date.now()}`;
     
     setMessages(prev => [...prev, userMessage]);
-    setInputValue('');
     setIsLoading(true);
     setError(null);
 
@@ -1127,7 +1126,12 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext, pendingMessage, onP
     }
   };
 
-  const sendMessage = () => sendMessageWithContent(inputValue);
+  const sendMessage = () => {
+    const trimmed = inputValue.trim();
+    if (!trimmed || isLoading) return;
+    setInputValue('');
+    sendMessageWithContent(trimmed);
+  };
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
