@@ -1,5 +1,12 @@
 import React from 'react';
 import { Clock, CheckCircle, XCircle, MessageCircleQuestion } from 'lucide-react';
+import { normalizeDifficulty } from '../../../modules/questionUtils';
+
+const DIFFICULTY_BADGE = {
+  beginner: { label: 'Beginner', className: 'bg-green-900/30 border-green-400/30 text-green-300' },
+  standard: { label: 'Standard', className: 'bg-amber-900/30 border-amber-400/30 text-amber-300' },
+  expert: { label: 'Expert', className: 'bg-red-900/30 border-red-400/30 text-red-300' },
+};
 
 const QuestionPanel = ({
   moduleTitle,
@@ -26,14 +33,20 @@ const QuestionPanel = ({
   const currentQuestion = questions[currentQuestionIndex];
   const totalQuestions = questions.length;
   const progress = ((currentQuestionIndex + 1) / totalQuestions) * 100;
+  const difficultyBadge = DIFFICULTY_BADGE[normalizeDifficulty(currentQuestion?.difficulty)];
 
   return (
     <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 border border-white/10">
       <div className="mb-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
-          <h3 className="text-lg md:text-xl font-bold text-white">
-            {moduleTitle} - Question {currentQuestionIndex + 1}/{totalQuestions}
-          </h3>
+          <div className="flex items-center gap-3 flex-wrap">
+            <h3 className="text-lg md:text-xl font-bold text-white">
+              {moduleTitle} - Question {currentQuestionIndex + 1}/{totalQuestions}
+            </h3>
+            <span className={`px-2 py-1 rounded-md border text-xs font-semibold uppercase tracking-wide ${difficultyBadge.className}`}>
+              {difficultyBadge.label}
+            </span>
+          </div>
           <div className="flex items-center gap-4">
             <div className={`flex items-center gap-2 backdrop-blur-sm rounded-lg px-3 py-2 border transition-all ${
                 timerState === 'idle'
