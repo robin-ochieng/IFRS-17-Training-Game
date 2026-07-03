@@ -36,3 +36,6 @@ backend/app/**/__pycache__/
 *.pyo
 .pytest_cache/
 backend/data/chroma_db/
+
+# Vercel CLI link
+.vercel/
