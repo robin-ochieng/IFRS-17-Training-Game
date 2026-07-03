@@ -1113,7 +1113,9 @@ git add src/hooks/useQuestionFlow.js src/components/game/QuestionPanel/QuestionP
 git commit -m "feat: banded question ordering, difficulty-weighted XP, difficulty badge"
 ```
 
----### Task 6: Power-up UI — Eliminate + Hint (with chatbot auto-send)
+---
+
+### Task 6: Power-up UI — Eliminate + Hint (with chatbot auto-send)
 
 **Files:**
 - Create: `src/components/game/QuestionPanel/PowerUpBar.js`
