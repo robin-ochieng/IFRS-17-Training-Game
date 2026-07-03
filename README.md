@@ -9,10 +9,11 @@ The IFRS 17 Master Training Game transforms complex regulatory learning into an 
 ## ✨ Key Features
 
 ### 🎮 Core Gameplay
-- **Progressive Module System**: 9 comprehensive training modules covering all aspects of IFRS 17
+- **Progressive Module System**: 15 comprehensive training modules covering all aspects of IFRS 17
 - **Randomized Questions**: Fisher-Yates shuffle algorithm ensures unique question ordering each session
+- **Difficulty Tiers**: Every question is tagged Beginner/Standard/Expert; modules ramp up in difficulty and harder questions earn more XP
 - **Scoring System**: Dynamic point calculation with combo multipliers and streak bonuses
-- **Power-ups**: Strategic game elements including hints, answer elimination, and question skipping
+- **Power-ups**: Eliminate (remove two wrong options) and Hint (ask the AI assistant), limited per module
 - **Real-time Feedback**: Instant explanations and performance tracking
 
 ### 🏆 Gamification Elements
@@ -61,7 +62,7 @@ The IFRS 17 Master Training Game transforms complex regulatory learning into an 
 - Session management
 
 #### Data Layer
-- **Modules**: 9 training modules with 200+ questions
+- **Modules**: 15 training modules with 300+ questions, generated from a CSV question bank (see below)
 - **Achievements**: Dynamic achievement system with conditions
 - **Storage Service**: Dual storage strategy (cloud + local)
 - **Leaderboard Service**: Real-time competitive features
@@ -127,7 +128,7 @@ The IFRS 17 Master Training Game transforms complex regulatory learning into an 
 1. **Registration**: Create account with email, organization, and location
 2. **Module Progression**: Complete modules sequentially to unlock new content
 3. **Question Answering**: Select answers to randomized questions with instant feedback
-4. **Power-up Strategy**: Use hints, elimination, and skips strategically
+4. **Power-up Strategy**: Use Hint and Eliminate strategically — allowances reset each module
 5. **Achievement Hunting**: Unlock achievements through various accomplishments
 6. **Leaderboard Climbing**: Compete globally and within specific modules
 
@@ -155,11 +156,20 @@ The IFRS 17 Master Training Game transforms complex regulatory learning into an 
 ### Power-ups System
 ```javascript
 INITIAL_POWER_UPS = {
-  hint: 3,      // Helpful question hints
-  eliminate: 2, // Remove wrong answers
-  skip: 1       // Skip difficult questions
+  eliminate: 2, // Remove two wrong answers
+  hint: 3       // Ask the AI assistant for a hint
 }
 ```
+
+### Updating Question Content
+
+The question bank lives in `questions/ifrs17_questions_choices_explanations excel database.csv`
+(columns: Module No, Module Name, Complexity, Question, Option 1–4, Correct Answer, Explanation).
+`src/data/IFRS17Modules.js` is GENERATED from it — never edit the JS file by hand.
+
+1. Edit the CSV (keep Complexity one of Beginner/Standard/Expert; Correct Answer must exactly match one option).
+2. Run `npm run generate:questions` — it validates every row and refuses to write on any error.
+3. Commit both the CSV and the regenerated `src/data/IFRS17Modules.js`.
 
 ### Achievement Conditions
 - Score milestones (10+ points)
@@ -249,10 +259,10 @@ Kenbright AI is a leading provider of financial regulatory training solutions, s
 
 ## 📊 Project Statistics
 
-- **Total Questions**: 200+ across 9 modules
+- **Total Questions**: 300+ across 15 modules
 - **Achievement Types**: 8 unique achievements
 - **Supported Countries**: 195 countries
-- **Power-up Types**: 3 strategic game enhancers
+- **Power-up Types**: 2 strategic game enhancers (Eliminate, Hint)
 - **Component Count**: 15+ React components
 - **Database Tables**: 4 primary tables
 

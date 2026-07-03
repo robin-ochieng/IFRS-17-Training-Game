@@ -63,7 +63,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
           </Section>
 
           <Section icon={Zap} title="Power‑ups">
-            <p className="mb-2">Hint, Eliminate, and Skip provide advantages. Skipping moves you to the next question but breaks the perfect run. Availability is limited per module.</p>
+            <p className="mb-2">Eliminate removes two wrong options; Hint asks the AI assistant for a nudge without revealing the answer. Availability is limited per module and resets when a new module starts. Using power-ups never breaks a perfect run.</p>
             <p className="text-xs text-gray-400">Note: Power‑ups may vary by event or release.</p>
           </Section>
 
@@ -83,9 +83,9 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
 
           <Section icon={ShieldQuestion} title="FAQ">
             <QA q="How do I score points?">Each correct answer awards 10 × (combo + 1). Keep answering correctly to build combo and streak for higher points.</QA>
-            <QA q="What’s a “Perfect Module”?">Completing a module without any wrong or skipped answers. You’ll see a “Perfect” highlight on completion and in leaderboards.</QA>
+            <QA q="What’s a “Perfect Module”?">Completing a module without any wrong answers. You’ll see a “Perfect” highlight on completion and in leaderboards.</QA>
             <QA q="How does leveling work?">You gain 25 XP per correct answer. Level up when XP reaches level × 100.</QA>
-            <QA q="What are power‑ups and how do they work?">Hint, Eliminate, and Skip provide advantages. Skipping moves you to the next question but breaks the perfect run. Availability is limited per module.</QA>
+            <QA q="What are power‑ups and how do they work?">Eliminate removes two wrong options; Hint asks the AI assistant for a nudge without revealing the answer. Availability is limited per module and resets when a new module starts. Using power-ups never breaks a perfect run.</QA>
             <QA q="When does the timer start?">The timer starts when you submit your first answer in a module and stops when the module ends.</QA>
             <QA q="Why are only some modules available to me?">Guests can play Module 1. Sign in to unlock more modules and sync progress across devices.</QA>
             <QA q="Will my progress be saved?">Yes. Guests are saved locally on your device. Signed‑in users are saved to the cloud and auto‑saved periodically.</QA>
