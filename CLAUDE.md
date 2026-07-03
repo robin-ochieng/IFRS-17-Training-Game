@@ -58,7 +58,9 @@ Entry flow: `src/index.js` → `src/App.js` → `src/IFRS17TrainingGame.js`.
 - `src/hooks/useQuestionFlow.js` — answering, scoring, module completion
 - `src/hooks/useGameUIActions.js`, `useModuleTimer.js`, `useAchievements.js`
 
-UI components live in `src/components/game/` (question panel, toasts, module-complete modal) and `src/components/layout/` (header, stats, modules grid). Question content for all 9 modules is in `src/data/IFRS17Modules.js`.
+UI components live in `src/components/game/` (question panel, toasts, module-complete modal) and `src/components/layout/` (header, stats, modules grid). Question content for all 15 modules is GENERATED into `src/data/IFRS17Modules.js` from
+`questions/ifrs17_questions_choices_explanations excel database.csv` via `npm run generate:questions`
+(script: `scripts/generate-modules.js`). Edit the CSV, not the JS file.
 
 **Deferred authentication** (`DEFERRED_AUTH_IMPLEMENTATION.md`): users play Module 1 as a guest (localStorage only, keys in `GAME_CONFIG.STORAGE_KEYS`); completing Module 1 prompts sign-up, and `migrateGuestToAuthenticatedUser()` (in `src/modules/guestUserService.js`) transfers guest progress to the Supabase account. Controlled by the `ENABLE_DEFERRED_AUTH` flag and `MODULE_ACCESS` lists in `src/config/gameConfig.js`. Modules 2+ require auth.
 

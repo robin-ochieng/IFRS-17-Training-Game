@@ -236,6 +236,13 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     currentModule,
   );
 
+  // The chatbot must see the question the user is actually looking at —
+  // shuffledQuestions holds the displayed (banded-shuffled) order, while
+  // modules[...] is the original CSV order.
+  const displayedQuestion =
+    shuffledQuestions[currentModule]?.[currentQuestion] ||
+    modules[currentModule]?.questions[currentQuestion];
+
   const HINT_MESSAGE = 'Give me a hint for this question, without revealing the answer.';
 
   const handleUseEliminate = useCallback(() => {
@@ -486,6 +493,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             setEliminatedOptions({});
             setHintUsedQuestions({});
             setPendingChatMessage(null);
+            setReviewQuestions(null);
             resetProgress();
             setShowResetModal(false);
           }}
@@ -576,9 +584,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         currentModuleTitle: modules[currentModule]?.title,
         currentModuleIcon: modules[currentModule]?.icon,
         currentQuestionIndex: currentQuestion,
-        currentQuestionText: modules[currentModule]?.questions[currentQuestion]?.question,
-        currentQuestionOptions: modules[currentModule]?.questions[currentQuestion]?.options,
-        currentQuestionExplanation: modules[currentModule]?.questions[currentQuestion]?.explanation,
+        currentQuestionText: displayedQuestion?.question,
+        currentQuestionOptions: displayedQuestion?.options,
+        currentQuestionExplanation: displayedQuestion?.explanation,
         isModuleCompleted: completedModules.includes(currentModule),
         completedModules: completedModules.map(idx => modules[idx]?.title).filter(Boolean),
         userLevel: level,
