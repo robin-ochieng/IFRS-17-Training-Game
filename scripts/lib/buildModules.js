@@ -21,7 +21,13 @@ const resolveColumns = (fields) => {
 };
 
 const buildModules = (csvText) => {
-  const parsed = Papa.parse(csvText, { header: true, skipEmptyLines: 'greedy' });
+  const parsed = Papa.parse(csvText, {
+    header: true,
+    skipEmptyLines: 'greedy',
+    // The CSV has ~12 unnamed trailing columns; give them unique names so
+    // papaparse doesn't console.warn about duplicate headers on every parse.
+    transformHeader: (header, index) => header || `_unnamed_${index}`,
+  });
   const cols = resolveColumns(parsed.meta.fields || []);
 
   const missing = Object.entries(cols)
