@@ -75,7 +75,7 @@ const GameGuideFAQ = ({ isOpen, onClose }) => {
             <ul className="list-disc list-inside space-y-1">
               <li>Each question allows one answer; you can’t change it once submitted.</li>
               <li>Questions are shuffled every module attempt.</li>
-              <li>“Perfect Module” = no wrong or skipped answers.</li>
+              <li>“Perfect Module” = no wrong answers.</li>
               <li>Guests can play Module 1. Sign in to unlock the rest.</li>
               <li>Auto‑save keeps your progress; signed‑in users sync to the cloud.</li>
             </ul>
