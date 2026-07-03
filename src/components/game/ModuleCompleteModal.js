@@ -1,5 +1,5 @@
 import React from 'react';
-import { Trophy, Star, Sparkles, ArrowRight, Award, Clock } from 'lucide-react';
+import { Trophy, Star, Sparkles, ArrowRight, Award, Clock, RotateCcw } from 'lucide-react';
 import ModalPortal from '../ui/ModalPortal';
 
 const ModuleCompleteModal = ({
@@ -9,6 +9,8 @@ const ModuleCompleteModal = ({
   perfectModule,
   completionTime,
   hasNextModule,
+  missedCount,
+  onReviewMissed,
   onStartNext,
   onClose,
 }) => {
@@ -117,6 +119,17 @@ const ModuleCompleteModal = ({
                 ? "Ready to continue your IFRS 17 journey?"
                 : "🎊 Congratulations! You've mastered all modules!"}
             </p>
+
+            {/* Review missed questions */}
+            {missedCount > 0 && onReviewMissed && (
+              <button
+                onClick={onReviewMissed}
+                className="w-full mb-3 bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2"
+              >
+                <RotateCcw className="w-5 h-5" />
+                <span>Review missed questions ({missedCount})</span>
+              </button>
+            )}
 
             {/* Action button */}
             {hasNextModule ? (

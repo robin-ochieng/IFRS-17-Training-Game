@@ -6,7 +6,7 @@ import {
   canUsePowerUp,
   consumePowerUp,
 } from './modules/powerUps';
-import { pickEliminatedOptions } from './modules/questionUtils';
+import { pickEliminatedOptions, getMissedQuestions } from './modules/questionUtils';
 import AuthenticationModal from './components/AuthenticationModal';
 import LeaderboardModal from './modules/LeaderboardModal';
 import GameGuideFAQ from './components/GameGuideFAQ';
@@ -22,6 +22,7 @@ import ModuleCompleteModal from './components/game/ModuleCompleteModal';
 import AllModulesCompleteBanner from './components/game/AllModulesCompleteBanner';
 import AchievementsList from './components/game/AchievementsList';
 import QuestionPanel from './components/game/QuestionPanel/QuestionPanel';
+import ReviewPanel from './components/game/ReviewPanel';
 import ChatbotIcon from './components/ChatbotIcon';
 import ChatPanel from './components/ChatPanel';
 import ResetConfirmModal from './components/ResetConfirmModal';
@@ -88,6 +89,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [eliminatedOptions, setEliminatedOptions] = useState({}); // { "module-question": [i, j] }
   const [hintUsedQuestions, setHintUsedQuestions] = useState({}); // { "module-question": true }
+  const [reviewQuestions, setReviewQuestions] = useState(null);
   const [pendingChatMessage, setPendingChatMessage] = useState(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [notification, setNotification] = useState({ isOpen: false, type: 'info', title: '', message: '' });
@@ -228,6 +230,12 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     uiState: { setShowAuthModal, setPendingModule1Completion },
   });
 
+  const missedInCurrentModule = getMissedQuestions(
+    shuffledQuestions[currentModule] || [],
+    answeredQuestions,
+    currentModule,
+  );
+
   const HINT_MESSAGE = 'Give me a hint for this question, without revealing the answer.';
 
   const handleUseEliminate = useCallback(() => {
@@ -256,6 +264,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const launchModule = useCallback((moduleIndex) => {
     setEliminatedOptions({});
     setHintUsedQuestions({});
+    setReviewQuestions(null);
     startNewModule(moduleIndex);
   }, [startNewModule]);
 
@@ -377,6 +386,11 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           perfectModule={perfectModule}
           completionTime={elapsedTime}
           hasNextModule={currentModule < modules.length - 1}
+          missedCount={missedInCurrentModule.length}
+          onReviewMissed={() => {
+            setShowModuleComplete(false);
+            setReviewQuestions(missedInCurrentModule);
+          }}
           onStartNext={() => {
             setShowModuleComplete(false);
             setTimeout(() => {
@@ -412,6 +426,18 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             hintUsed={!!hintUsedQuestions[`${currentModule}-${currentQuestion}`]}
             onUseEliminate={handleUseEliminate}
             onUseHint={handleUseHint}
+          />
+        )}
+
+        {/* Review of missed questions (post module completion) */}
+        {reviewQuestions && (
+          <ReviewPanel
+            questions={reviewQuestions}
+            moduleTitle={modules[currentModule]?.title}
+            onExit={() => {
+              setReviewQuestions(null);
+              setShowModuleComplete(true);
+            }}
           />
         )}
 
