@@ -59,12 +59,14 @@ const buildModules = (csvText) => {
     const difficulty = (row[cols.complexity] || '').trim().toLowerCase();
     if (!DIFFICULTIES.includes(difficulty)) rowErrors.push(`unknown Complexity "${row[cols.complexity]}"`);
 
+    // Exact option-text match takes priority. A bare 1-4 digit only falls back
+    // to positional interpretation when it doesn't literally match any option
+    // (e.g. options ["2","3","4","6"] with Correct Answer "3" must grade the
+    // matching option text at index 1, not position 3 / index 2).
     const correctRaw = (row[cols.correct] || '').trim();
-    let correct;
-    if (/^[1-4]$/.test(correctRaw)) {
+    let correct = options.indexOf(correctRaw);
+    if (correct < 0 && /^[1-4]$/.test(correctRaw)) {
       correct = parseInt(correctRaw, 10) - 1;
-    } else {
-      correct = options.indexOf(correctRaw);
     }
     if (correct < 0) rowErrors.push(`Correct Answer "${correctRaw}" does not match any option`);
 

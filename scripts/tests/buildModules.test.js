@@ -31,10 +31,18 @@ test('parses a valid row into a module question with difficulty', () => {
   });
 });
 
-test('resolves numeric 1-4 Correct Answer to a zero-based index', () => {
+test('falls back to positional index when a bare 1-4 digit matches no option text', () => {
   const { modules, errors } = buildModules(csv(row({ correct: '3' })));
   assert.equal(errors.length, 0);
   assert.equal(modules[0].questions[0].correct, 2);
+});
+
+test('prefers exact option-text match over positional digit interpretation', () => {
+  const { modules, errors } = buildModules(
+    csv(row({ o1: '2', o2: '3', o3: '4', o4: '6', correct: '3' }))
+  );
+  assert.equal(errors.length, 0);
+  assert.equal(modules[0].questions[0].correct, 1);
 });
 
 test('rejects a Correct Answer that matches no option, with row number', () => {
