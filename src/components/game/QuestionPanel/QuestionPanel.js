@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock, CheckCircle, XCircle, MessageCircleQuestion } from 'lucide-react';
 import { normalizeDifficulty } from '../../../modules/questionUtils';
+import PowerUpBar from './PowerUpBar';
 
 const DIFFICULTY_BADGE = {
   beginner: { label: 'Beginner', className: 'bg-green-900/30 border-green-400/30 text-green-300' },
@@ -26,6 +27,11 @@ const QuestionPanel = ({
   streak,
   onAnswer,
   onAskHelp,
+  powerUps,
+  eliminatedOptions,
+  hintUsed,
+  onUseEliminate,
+  onUseHint,
 }) => {
   if (!questions?.length) return null;
 
@@ -34,6 +40,10 @@ const QuestionPanel = ({
   const totalQuestions = questions.length;
   const progress = ((currentQuestionIndex + 1) / totalQuestions) * 100;
   const difficultyBadge = DIFFICULTY_BADGE[normalizeDifficulty(currentQuestion?.difficulty)];
+  const answered = answeredQuestions[questionKey]?.answered;
+  const eliminated = eliminatedOptions || [];
+  const eliminateDisabled = showFeedback || answered || eliminated.length > 0 || !(powerUps?.eliminate > 0);
+  const hintDisabled = showFeedback || answered || hintUsed || !(powerUps?.hint > 0);
 
   return (
     <div className="bg-black/40 backdrop-blur-md rounded-2xl p-8 border border-white/10">
@@ -106,6 +116,16 @@ const QuestionPanel = ({
         </div>
       </div>
 
+      {onUseEliminate && onUseHint && (
+        <PowerUpBar
+          powerUps={powerUps}
+          onUseEliminate={onUseEliminate}
+          onUseHint={onUseHint}
+          eliminateDisabled={eliminateDisabled}
+          hintDisabled={hintDisabled}
+        />
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {currentQuestion?.options.map((option, index) => (
           <button
@@ -113,14 +133,18 @@ const QuestionPanel = ({
             onClick={() =>
               !showFeedback &&
               !answeredQuestions[questionKey]?.answered &&
+              !eliminated.includes(index) &&
               onAnswer(index)
             }
             disabled={
               showFeedback ||
-              answeredQuestions[questionKey]?.answered
+              answeredQuestions[questionKey]?.answered ||
+              eliminated.includes(index)
             }
             className={`p-3 md:p-4 rounded-xl border-2 transition-all duration-300 transform hover:scale-102 text-sm md:text-base ${
-              answeredQuestions[questionKey]?.answered
+              eliminated.includes(index) && !answeredQuestions[questionKey]?.answered && !showFeedback
+                ? 'bg-gray-800/60 border-gray-700 text-gray-600 line-through opacity-40 cursor-not-allowed'
+                : answeredQuestions[questionKey]?.answered
                 ? answeredQuestions[questionKey]?.selectedAnswer === index
                   ? answeredQuestions[questionKey]?.wasCorrect
                     ? 'bg-green-500/20 border-green-400 text-green-400'

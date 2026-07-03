@@ -878,7 +878,7 @@ const SummaryCard = ({ summary, isMaximized }) => {
   );
 };
 
-const ChatPanel = ({ isOpen, onClose, userName, gameContext }) => {
+const ChatPanel = ({ isOpen, onClose, userName, gameContext, pendingMessage, onPendingMessageConsumed }) => {
   // Create personalized welcome message with game context
   const getWelcomeMessage = () => {
     const displayName = userName ? userName.split(' ')[0] : '';
@@ -938,13 +938,23 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext }) => {
     }
   }, [isOpen]);
 
-  const sendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+  // Auto-send a message queued by the game (e.g. the Hint power-up).
+  useEffect(() => {
+    if (isOpen && pendingMessage?.text && !isLoading) {
+      sendMessageWithContent(pendingMessage.text);
+      onPendingMessageConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, pendingMessage?.id]);
+
+  const sendMessageWithContent = async (content) => {
+    const trimmed = (content || '').trim();
+    if (!trimmed || isLoading) return;
 
     const userMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: inputValue.trim(),
+      content: trimmed,
       timestamp: new Date()
     };
 
@@ -1114,6 +1124,8 @@ const ChatPanel = ({ isOpen, onClose, userName, gameContext }) => {
       setIsLoading(false);
     }
   };
+
+  const sendMessage = () => sendMessageWithContent(inputValue);
 
   const handleKeyPress = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {

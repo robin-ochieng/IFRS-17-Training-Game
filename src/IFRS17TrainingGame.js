@@ -1,9 +1,12 @@
 // IFRS17TrainingGame.js - Updated with deferred authentication
 import React, { useState, useCallback } from 'react';
 import { modules } from './data/IFRS17Modules';
-import { 
-  INITIAL_POWER_UPS, 
+import {
+  INITIAL_POWER_UPS,
+  canUsePowerUp,
+  consumePowerUp,
 } from './modules/powerUps';
+import { pickEliminatedOptions } from './modules/questionUtils';
 import AuthenticationModal from './components/AuthenticationModal';
 import LeaderboardModal from './modules/LeaderboardModal';
 import GameGuideFAQ from './components/GameGuideFAQ';
@@ -83,6 +86,9 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
   const [isSavingProgress, setIsSavingProgress] = useState(false);
   const [isBootingResume, setIsBootingResume] = useState(true);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [eliminatedOptions, setEliminatedOptions] = useState({}); // { "module-question": [i, j] }
+  const [hintUsedQuestions, setHintUsedQuestions] = useState({}); // { "module-question": true }
+  const [pendingChatMessage, setPendingChatMessage] = useState(null);
   const [showResetModal, setShowResetModal] = useState(false);
   const [notification, setNotification] = useState({ isOpen: false, type: 'info', title: '', message: '' });
   const isCurrentModuleCompleted = completedModules.includes(currentModule);
@@ -222,6 +228,37 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
     uiState: { setShowAuthModal, setPendingModule1Completion },
   });
 
+  const HINT_MESSAGE = 'Give me a hint for this question, without revealing the answer.';
+
+  const handleUseEliminate = useCallback(() => {
+    const questionKey = `${currentModule}-${currentQuestion}`;
+    if (!canUsePowerUp(powerUps, 'eliminate')) return;
+    if (eliminatedOptions[questionKey] || answeredQuestions[questionKey]?.answered) return;
+    const questionData = getShuffledQuestions(currentModule)[currentQuestion];
+    if (!questionData) return;
+    setEliminatedOptions((prev) => ({
+      ...prev,
+      [questionKey]: pickEliminatedOptions(questionData),
+    }));
+    setPowerUps((prev) => consumePowerUp(prev, 'eliminate'));
+  }, [currentModule, currentQuestion, powerUps, eliminatedOptions, answeredQuestions, getShuffledQuestions]);
+
+  const handleUseHint = useCallback(() => {
+    const questionKey = `${currentModule}-${currentQuestion}`;
+    if (!canUsePowerUp(powerUps, 'hint')) return;
+    if (hintUsedQuestions[questionKey] || answeredQuestions[questionKey]?.answered) return;
+    setHintUsedQuestions((prev) => ({ ...prev, [questionKey]: true }));
+    setPowerUps((prev) => consumePowerUp(prev, 'hint'));
+    setPendingChatMessage({ text: HINT_MESSAGE, id: Date.now() });
+    setIsChatOpen(true);
+  }, [currentModule, currentQuestion, powerUps, hintUsedQuestions, answeredQuestions]);
+
+  const launchModule = useCallback((moduleIndex) => {
+    setEliminatedOptions({});
+    setHintUsedQuestions({});
+    startNewModule(moduleIndex);
+  }, [startNewModule]);
+
   const {
     handleSignIn,
     handleSignUp,
@@ -322,7 +359,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           unlockedModules={unlockedModules}
           isGuest={isGuest}
           showModuleComplete={showModuleComplete}
-          onModuleSelect={startNewModule}
+          onModuleSelect={launchModule}
           onLockedModuleSelect={handleLockedModuleSelect}
         />
 
@@ -343,7 +380,7 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
           onStartNext={() => {
             setShowModuleComplete(false);
             setTimeout(() => {
-              startNewModule(currentModule + 1);
+              launchModule(currentModule + 1);
             }, 100);
           }}
           onClose={() => setShowModuleComplete(false)}
@@ -370,6 +407,11 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
             streak={streak}
             onAnswer={handleAnswer}
             onAskHelp={() => setIsChatOpen(true)}
+            powerUps={powerUps}
+            eliminatedOptions={eliminatedOptions[`${currentModule}-${currentQuestion}`]}
+            hintUsed={!!hintUsedQuestions[`${currentModule}-${currentQuestion}`]}
+            onUseEliminate={handleUseEliminate}
+            onUseHint={handleUseHint}
           />
         )}
 
@@ -513,6 +555,8 @@ const IFRS17TrainingGame = ({ currentUser: propsUser, onLogout, onShowAuth }) =>
         userLevel: level,
         totalScore: score
       }}
+      pendingMessage={pendingChatMessage}
+      onPendingMessageConsumed={() => setPendingChatMessage(null)}
     />
   </>
   );
